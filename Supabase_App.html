@@ -4278,53 +4278,55 @@ window.google = {
             var cleanVerBy = cleanStatus === 'Reported' ? (verifiedBy || 'Warden') : '';
             var cleanRem = (remarks || '').toString().trim();
 
-            _supabase.from('students').update({
-              physical_status: cleanStatus,
-              reporting_date: cleanDate,
-              reported_verified_by: cleanVerBy,
-              remarks: cleanRem
-            }).or('app_id.eq.' + targetAppId + ',app_id.eq.' + rawId + ',app_id.eq.' + rawNoPrefix).then(function(res) {
-              if (res.error) {
-                _supabase.from('students').update({
-                  physical_status: cleanStatus,
-                  reporting_date: cleanDate,
-                  reported_verified_by: cleanVerBy,
-                  remarks: cleanRem
-                }).eq('app_id', targetAppId);
+            _supabase.from('hostel_settings').select('*').eq('key', 'ROOM_ALLOTMENTS_DATA').then(function(sRes) {
+              var allotments = [];
+              var sRow = sRes.data && sRes.data[0];
+              if (sRow && sRow.value) {
+                try { allotments = JSON.parse(sRow.value); } catch(e) {}
               }
 
-              _supabase.from('hostel_settings').select('*').eq('key', 'ROOM_ALLOTMENTS_DATA').then(function(sRes) {
-                var allotments = [];
-                var sRow = sRes.data && sRes.data[0];
-                if (sRow && sRow.value) {
-                  try { allotments = JSON.parse(sRow.value); } catch(e) {}
-                }
-                var existingIdx = allotments.findIndex(function(a){
-                  var aApp = (a.appId || '').toString().trim();
-                  var aId = (a.allotmentId || '').toString().trim();
-                  return aApp === targetAppId || aApp === rawId || aId === rawId || aApp.replace(/^APP-/,'') === rawNoPrefix || aId.replace(/^ALLOT-/,'').replace(/^ALT-/,'') === rawNoPrefix;
-                });
-                if (existingIdx !== -1) {
-                  allotments[existingIdx].physicalStatus = cleanStatus;
-                  allotments[existingIdx].reportingDate = cleanDate;
-                  allotments[existingIdx].reportedVerifiedBy = cleanVerBy;
-                  allotments[existingIdx].reportingRemarks = cleanRem;
-                } else {
-                  allotments.push({
-                    allotmentId: rawId.indexOf('ALLOT-') === 0 ? rawId : ('ALLOT-' + rawNoPrefix),
-                    appId: targetAppId,
-                    physicalStatus: cleanStatus,
-                    reportingDate: cleanDate,
-                    reportedVerifiedBy: cleanVerBy,
-                    reportingRemarks: cleanRem,
-                    status: 'Active'
-                  });
-                }
+              var existingIdx = allotments.findIndex(function(a){
+                var aApp = (a.appId || '').toString().trim();
+                var aId = (a.allotmentId || '').toString().trim();
+                return aId === rawId || aApp === targetAppId || aApp === rawId || aApp.replace(/^APP-/,'') === rawNoPrefix || aId.replace(/^ALLOT-/,'').replace(/^ALT-/,'') === rawNoPrefix;
+              });
 
+              var realAppId = targetAppId;
+              if (existingIdx !== -1) {
+                if (allotments[existingIdx].appId) realAppId = allotments[existingIdx].appId;
+                allotments[existingIdx].physicalStatus = cleanStatus;
+                allotments[existingIdx].reportingDate = cleanDate;
+                allotments[existingIdx].reportedVerifiedBy = cleanVerBy;
+                allotments[existingIdx].reportingRemarks = cleanRem;
+              } else {
+                allotments.push({
+                  allotmentId: rawId.indexOf('ALLOT-') === 0 ? rawId : ('ALLOT-' + rawNoPrefix),
+                  appId: targetAppId,
+                  physicalStatus: cleanStatus,
+                  reportingDate: cleanDate,
+                  reportedVerifiedBy: cleanVerBy,
+                  reportingRemarks: cleanRem,
+                  status: 'Active'
+                });
+              }
+
+              var studentPayload = {
+                physical_status: cleanStatus,
+                reviewed_by: cleanVerBy,
+                review_date: cleanDate,
+                remarks: cleanRem
+              };
+
+              var filterExpr = 'app_id.eq.' + realAppId + ',app_id.eq.' + targetAppId + ',app_id.eq.' + rawId + ',app_id.eq.' + rawNoPrefix;
+
+              Promise.all([
+                _supabase.from('students').update(studentPayload).or(filterExpr),
                 _supabase.from('hostel_settings').upsert([{
                   key: 'ROOM_ALLOTMENTS_DATA',
                   value: JSON.stringify(allotments)
-                }]).then(function() {
+                }])
+              ]).then(function() {
+                _supabase.from('students').update(studentPayload).eq('app_id', realAppId).then(function() {
                   successCb({ success: true, message: 'Physical status updated to ' + cleanStatus });
                 }).catch(function() {
                   successCb({ success: true, message: 'Physical status updated to ' + cleanStatus });
