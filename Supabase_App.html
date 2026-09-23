@@ -5207,12 +5207,74 @@ window.google = {
           },
 
           cancelFeeReceipt: function(receiptId, reason) {
-            _supabase.from('fee_receipts').update({
-              status: 'Cancelled',
-              remarks: 'CANCELLED: ' + (reason || 'No reason specified')
-            }).eq('receipt_id', receiptId).then(function(res) {
-              if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'Receipt ' + receiptId + ' cancelled successfully.' });
+            var cleanRcptId = (receiptId || '').toString().trim();
+            if (!cleanRcptId) return failureCb(new Error('Receipt ID is required.'));
+
+            _supabase.from('fee_receipts').select('*').eq('receipt_id', cleanRcptId).then(function(rRes) {
+              var rcpt = (rRes.data && rRes.data[0]);
+              if (!rcpt) return failureCb(new Error('Receipt ' + cleanRcptId + ' not found.'));
+
+              var appId = rcpt.app_id;
+              var rcptAmount = parseFloat(rcpt.amount_paid) || parseFloat(rcpt.amount) || 0;
+              var rcptFeeType = (rcpt.fee_type || '').toString().trim().toUpperCase();
+
+              _supabase.from('student_fee_ledger').select('*').eq('app_id', appId).then(function(lRes) {
+                var ledgerRows = lRes.data || [];
+                var ledgerUpdates = [];
+
+                // Try matching specific fee head first
+                var matchingLedger = ledgerRows.find(function(r) {
+                  var hName = (r.head_name || '').toString().trim().toUpperCase();
+                  return hName === rcptFeeType || rcptFeeType.indexOf(hName) !== -1 || hName.indexOf(rcptFeeType) !== -1;
+                });
+
+                if (matchingLedger && rcptAmount > 0) {
+                  var curPaid = parseFloat(matchingLedger.paid_amount) || 0;
+                  var appAmt = parseFloat(matchingLedger.applicable_amount) || 0;
+                  var newPaid = Math.max(0, curPaid - rcptAmount);
+                  var newBal = Math.max(0, appAmt - newPaid);
+                  var newSt = newBal <= 0 ? 'Paid' : (newPaid > 0 ? 'Partial' : 'Pending');
+
+                  ledgerUpdates.push(_supabase.from('student_fee_ledger').update({
+                    paid_amount: newPaid,
+                    balance: newBal,
+                    status: newSt
+                  }).eq('ledger_id', matchingLedger.ledger_id));
+                } else if (rcptAmount > 0) {
+                  // Fallback: reverse rcptAmount across ledger rows for this student that have paid_amount > 0
+                  var remToReverse = rcptAmount;
+                  var paidRows = ledgerRows.filter(function(r) { return (parseFloat(r.paid_amount) || 0) > 0; });
+                  
+                  paidRows.forEach(function(r) {
+                    if (remToReverse <= 0) return;
+                    var curPaid = parseFloat(r.paid_amount) || 0;
+                    var appAmt = parseFloat(r.applicable_amount) || 0;
+                    var rev = Math.min(remToReverse, curPaid);
+                    var newPaid = Math.max(0, curPaid - rev);
+                    var newBal = Math.max(0, appAmt - newPaid);
+                    var newSt = newBal <= 0 ? 'Paid' : (newPaid > 0 ? 'Partial' : 'Pending');
+
+                    ledgerUpdates.push(_supabase.from('student_fee_ledger').update({
+                      paid_amount: newPaid,
+                      balance: newBal,
+                      status: newSt
+                    }).eq('ledger_id', r.ledger_id));
+
+                    remToReverse -= rev;
+                  });
+                }
+
+                Promise.all(ledgerUpdates).then(function() {
+                  var cleanReason = 'CANCELLED: ' + (reason || 'No reason specified');
+                  _supabase.from('fee_receipts').update({
+                    status: 'Cancelled',
+                    remarks: cleanReason
+                  }).eq('receipt_id', cleanRcptId).then(function(res) {
+                    if (res.error) failureCb(res.error);
+                    else successCb({ success: true, message: 'Receipt ' + cleanRcptId + ' cancelled and ledger reversed successfully.' });
+                  }).catch(failureCb);
+                }).catch(failureCb);
+              }).catch(failureCb);
             }).catch(failureCb);
           },
 
@@ -5807,10 +5869,10 @@ window.google = {
           },
 
           getBankReconciliationReport: function(academicYear) {
-            _supabase.from('fee_receipts').select('*').neq('payment_mode', 'Cash').then(function(res) {
+            _supabase.from('fee_receipts').select('*').neq('payment_mode', 'Cash').neq('status', 'Cancelled').then(function(res) {
               if (res.error) failureCb(res.error);
               else {
-                var rawData = res.data || [];
+                var rawData = (res.data || []).filter(function(f) { return f.status !== 'Cancelled'; });
                 if (academicYear && academicYear !== 'All') {
                   rawData = rawData.filter(function(f) {
                     var ay = f.academic_year || '';

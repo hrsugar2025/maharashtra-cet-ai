@@ -198,6 +198,31 @@ class HostelAppEngine {
     if (!rcpt) throw new Error('Receipt not found');
 
     await this.db.from('fee_receipts').update({ status: 'Cancelled' }).eq('receipt_id', receiptId);
+
+    // Revert ledger paid amounts
+    const appId = rcpt.app_id;
+    const amount = rcpt.paid_amount || rcpt.amount_paid || 0;
+    const feeType = (rcpt.fee_type || '').toUpperCase();
+
+    const { data: ldgRows } = await this.db.from('student_fee_ledger').eq('app_id', appId);
+    if (ldgRows && ldgRows.length > 0) {
+      const match = ldgRows.find(r => (r.head_name || r.fee_type || '').toUpperCase() === feeType || feeType.includes((r.head_name || '').toUpperCase()));
+      if (match) {
+        const curPaid = match.paid_amount || 0;
+        const appAmt = match.due_amount || match.applicable_amount || 0;
+        const newPaid = Math.max(0, curPaid - amount);
+        const newBal = Math.max(0, appAmt - newPaid);
+        const newStatus = newBal === appAmt ? 'Pending' : (newBal === 0 ? 'Paid' : 'Partial');
+
+        await this.db.from('student_fee_ledger').update({
+          paid_amount: newPaid,
+          balance_amount: newBal,
+          balance: newBal,
+          status: newStatus
+        }).eq('ledger_id', match.ledger_id);
+      }
+    }
+
     return { success: true };
   }
 
@@ -499,4 +524,31 @@ test('10. Verify Arrival with ALLOT- Prefix (e.g. ALLOT-2026-3333)', async () =>
   assert.equal(student.physical_status, 'Reported');
   assert.equal(student.reporting_date, '2026-09-23');
   assert.equal(student.reported_verified_by, 'Rector');
+});
+
+test('11. Receipt Cancellation Ledger Reversal & Restoration', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  const appRes = await engine.submitStudentApplication({ name: 'Shravani Raut', contact_number: '9888899999' });
+  await engine.allotRoom(appRes.appId, '101');
+
+  // Pay ₹5000 Security Deposit
+  const payRes = await engine.recordFeePayment(appRes.appId, 5000, 'QR Code');
+  assert.equal(payRes.success, true);
+
+  // Security Deposit should be Paid
+  let secDep = supabase.tables.student_fee_ledger.find(l => l.app_id === appRes.appId && l.fee_type === 'Security Deposit');
+  assert.equal(secDep.status, 'Paid');
+  assert.equal(secDep.balance_amount, 0);
+
+  // Now Cancel Receipt
+  const cancelRes = await engine.cancelReceipt(payRes.receiptId);
+  assert.equal(cancelRes.success, true);
+
+  // Security Deposit should revert to Pending and balance 5000
+  secDep = supabase.tables.student_fee_ledger.find(l => l.app_id === appRes.appId && l.fee_type === 'Security Deposit');
+  assert.equal(secDep.status, 'Pending');
+  assert.equal(secDep.paid_amount, 0);
+  assert.equal(secDep.balance_amount, 5000);
 });
