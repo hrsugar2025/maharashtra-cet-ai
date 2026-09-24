@@ -4060,23 +4060,23 @@ function onFormSubmitTrigger(e) {
     
     // Map the questions to our formData keys using robust matching
     var formData = {
-      studentName:            findVal(["studentname", "nameofstudent", "name", "fullname", "nameofstaff"]),
-      fatherName:             findVal(["fathername", "fathersname", "father", "fathernameofstudent"]),
-      motherName:             findVal(["mothername", "mothersname", "mother"]),
-      dateOfBirth:            findVal(["dateofbirth", "dob", "birthdate"]),
-      contactNumber:          findVal(["contactnumber", "studentcontactnumber", "mobile", "mobileno", "phone", "studentmobile"]),
-      parentContact:          findVal(["parentcontact", "parentcontactnumber", "parentmobile", "fathercontact", "guardiancontact"]),
-      email:                  findVal(["email", "emailaddress", "emailid"]),
-      address:                findVal(["address", "permanentaddress", "residenceaddress"]),
-      city:                   findVal(["city", "town"]),
+      studentName:            findVal(["studentname", "nameofstudent", "name", "fullname", "nameofstaff", "studentfullname"]),
+      fatherName:             findVal(["fathername", "fathersname", "father", "fathernameofstudent", "fatherfullname"]),
+      motherName:             findVal(["mothername", "mothersname", "mother", "motherfullname"]),
+      dateOfBirth:            findVal(["dateofbirth", "dob", "birthdate", "dateofbirthdob"]),
+      contactNumber:          findVal(["contactnumber", "studentcontactnumber", "mobile", "mobileno", "phone", "studentmobile", "studentcontact", "studentphonenumber", "mobilephone"]),
+      parentContact:          findVal(["parentcontact", "parentcontactnumber", "parentmobile", "fathercontact", "guardiancontact", "parentphone", "mothercontact", "parentmobileno"]),
+      email:                  findVal(["email", "emailaddress", "emailid", "studentemail"]),
+      address:                findVal(["address", "permanentaddress", "residenceaddress", "fulladdress"]),
+      city:                   findVal(["city", "town", "district"]),
       state:                  findVal(["state", "region"]),
-      course:                 findVal(["course", "branch", "stream", "department", "dept"]),
-      yearOfStudy:            findVal(["yearofstudy", "year", "currentyear"]),
-      collegeName:            normalizeCollegeName(findVal(["collegename", "college", "institutename", "institute"])),
-      aadharNumber:           findVal(["aadharnumber", "aadharcardno", "aadhar", "aadharcard"]),
-      emergencyContactName:   findVal(["emergencycontactname", "emergencyname", "contactperson"]),
-      emergencyContactNumber: findVal(["emergencycontactnumber", "emergencycontact", "emergencyphone"]),
-      roomTypePreference:     findVal(["roomtypepreference", "roompreference", "preferenceofroom", "roomtype"])
+      course:                 findVal(["course", "branch", "stream", "department", "dept", "coursebranch"]),
+      yearOfStudy:            findVal(["yearofstudy", "year", "currentyear", "yearofcourse", "class"]),
+      collegeName:            normalizeCollegeName(findVal(["collegename", "college", "institutename", "institute", "nameofcollege"])),
+      aadharNumber:           findVal(["aadharnumber", "aadharcardno", "aadhar", "aadharcard", "aadharno", "uid"]),
+      emergencyContactName:   findVal(["emergencycontactname", "emergencyname", "contactperson", "emergencycontactperson"]),
+      emergencyContactNumber: findVal(["emergencycontactnumber", "emergencycontact", "emergencyphone", "emergencycontactno", "emergencycontactmobile"]),
+      roomTypePreference:     findVal(["roomtypepreference", "roompreference", "preferenceofroom", "roomtype", "roomtypepreferred"])
     };
     
     Logger.log("Final mapped formData: " + JSON.stringify(formData));

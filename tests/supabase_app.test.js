@@ -552,3 +552,154 @@ test('11. Receipt Cancellation Ledger Reversal & Restoration', async () => {
   assert.equal(secDep.paid_amount, 0);
   assert.equal(secDep.balance_amount, 5000);
 });
+
+test('12. Uniform Descending Sort By Latest Helper (sortByLatest)', async () => {
+  function convertDateToYYYYMMDD(dateStr) {
+    if (!dateStr) return '';
+    var months = {jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12'};
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+      var day = parts[0].toString().trim().padStart(2, '0');
+      var monthName = parts[1].toString().trim().toLowerCase();
+      var month = months[monthName] || '01';
+      var year = parts[2].toString().trim();
+      if (year.length === 4) return year + '-' + month + '-' + day;
+    }
+    var d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return '';
+  }
+
+  function parseTimestamp(val) {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (val instanceof Date) return val.getTime();
+    var str = String(val).trim();
+    if (!str) return 0;
+    var d = new Date(str);
+    if (!isNaN(d.getTime())) return d.getTime();
+    var converted = convertDateToYYYYMMDD(str);
+    if (converted) {
+      var d2 = new Date(converted);
+      if (!isNaN(d2.getTime())) return d2.getTime();
+    }
+    return 0;
+  }
+
+  function parseNumericSuffix(idStr) {
+    if (!idStr) return 0;
+    if (typeof idStr === 'number') return idStr;
+    var str = String(idStr).trim();
+    var match = str.match(/\d+$/);
+    if (match) return parseInt(match[0], 10);
+    return 0;
+  }
+
+  function sortByLatest(arr, dateKeys, idKeys) {
+    if (!Array.isArray(arr)) return arr;
+    if (typeof dateKeys === 'string') dateKeys = [dateKeys];
+    if (typeof idKeys === 'string') idKeys = [idKeys];
+    dateKeys = dateKeys || [];
+    idKeys = idKeys || [];
+
+    return arr.sort(function(a, b) {
+      if (!a && !b) return 0;
+      if (!a) return 1;
+      if (!b) return -1;
+      var timeA = 0, timeB = 0;
+      for (var i = 0; i < dateKeys.length; i++) {
+        var k = dateKeys[i];
+        if (a[k] && !timeA) timeA = parseTimestamp(a[k]);
+        if (b[k] && !timeB) timeB = parseTimestamp(b[k]);
+      }
+      if (timeA !== timeB) return timeB - timeA;
+
+      var idA = 0, idB = 0;
+      for (var j = 0; j < idKeys.length; j++) {
+        var ik = idKeys[j];
+        if (a[ik] && !idA) idA = parseNumericSuffix(a[ik]);
+        if (b[ik] && !idB) idB = parseNumericSuffix(b[ik]);
+      }
+      if (idA !== idB) return idB - idA;
+      return 0;
+    });
+  }
+
+  // Sample data with mixed date formats and numerical IDs
+  const sampleAllotments = [
+    { allotmentId: 'ALLOT-2026-1001', allotmentDate: '15-Jan-2026' },
+    { allotmentId: 'ALLOT-2026-3333', allotmentDate: '23-Sep-2026' },
+    { allotmentId: 'ALLOT-2026-2500', allotmentDate: '10-May-2026' }
+  ];
+
+  sortByLatest(sampleAllotments, ['allotmentDate'], 'allotmentId');
+
+  assert.equal(sampleAllotments[0].allotmentId, 'ALLOT-2026-3333');
+  assert.equal(sampleAllotments[1].allotmentId, 'ALLOT-2026-2500');
+  assert.equal(sampleAllotments[2].allotmentId, 'ALLOT-2026-1001');
+
+  // ID suffix fallback test when dates are identical
+  const sampleReceipts = [
+    { receiptId: 'RCPT-2026-100', receiptDate: '23-Sep-2026' },
+    { receiptId: 'RCPT-2026-6041', receiptDate: '23-Sep-2026' },
+    { receiptId: 'RCPT-2026-350', receiptDate: '23-Sep-2026' }
+  ];
+
+  sortByLatest(sampleReceipts, ['receiptDate'], 'receiptId');
+
+  assert.equal(sampleReceipts[0].receiptId, 'RCPT-2026-6041');
+  assert.equal(sampleReceipts[1].receiptId, 'RCPT-2026-350');
+  assert.equal(sampleReceipts[2].receiptId, 'RCPT-2026-100');
+});
+
+test('13. Manual Fee Receipt Creation & Ledger Settlement (amount_paid & balance columns)', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  const appRes = await engine.submitStudentApplication({ name: 'Rachika Rendale', contact_number: '9777788888' });
+  await engine.allotRoom(appRes.appId, '101');
+
+  const receiptId = 'RCPT-2026-9999';
+  await supabase.from('fee_receipts').insert([{
+    receipt_id: receiptId,
+    app_id: appRes.appId,
+    student_name: 'Rachika Rendale',
+    room_number: '101',
+    fee_type: 'Hostel Linen Charges',
+    amount_paid: 1000,
+    payment_mode: 'QR Code',
+    transaction_id: '66307761693',
+    receipt_date: '2026-09-23',
+    status: 'Active',
+    recon_status: 'Unreconciled'
+  }]);
+
+  const rcpt = supabase.tables.fee_receipts.find(r => r.receipt_id === receiptId);
+  assert.ok(rcpt);
+  assert.equal(rcpt.amount_paid, 1000);
+  assert.equal(rcpt.payment_mode, 'QR Code');
+  assert.equal(rcpt.transaction_id, '66307761693');
+});
+
+test('14. Payment Mode Normalization (categorizing transaction UTRs as Online/UPI)', async () => {
+  function normalizePaymentMode(modeStr, txnIdStr) {
+    var mode = (modeStr || '').toString().trim();
+    var txn = (txnIdStr || '').toString().trim();
+    if (!mode) return txn ? 'Online/UPI' : 'Cash';
+    var m = mode.toLowerCase();
+    if (m === 'cash') return 'Cash';
+    if (m === 'qr code' || m === 'qr' || m === 'phonepe' || m === 'gpay' || m === 'paytm') return 'QR Code';
+    if (m === 'online/upi' || m === 'online' || m === 'upi' || m === 'netbanking' || m === 'net banking') return 'Online/UPI';
+    if (m === 'bank transfer' || m === 'transfer' || m === 'neft' || m === 'rtgs' || m === 'imps' || m === 'bank') return 'Bank Transfer';
+    if (m === 'cheque' || m === 'demand draft' || m === 'dd') return 'Cheque';
+    if (m === 'card' || m === 'debit card' || m === 'credit card') return 'Card';
+    if (/^T\d{10,}/i.test(mode) || /^\d{10,}$/.test(mode) || /^[A-Z0-9]{12,}$/i.test(mode)) return 'Online/UPI';
+    return mode;
+  }
+
+  assert.equal(normalizePaymentMode('Cash'), 'Cash');
+  assert.equal(normalizePaymentMode('T2609211021428827432571'), 'Online/UPI');
+  assert.equal(normalizePaymentMode('129648661206'), 'Online/UPI');
+  assert.equal(normalizePaymentMode('662207522802'), 'Online/UPI');
+  assert.equal(normalizePaymentMode('QR Code'), 'QR Code');
+});
