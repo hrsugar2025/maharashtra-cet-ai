@@ -1190,7 +1190,59 @@
 
 <script>
 // Legacy Google Apps Script Safety Shim for Supabase Web Deployment
-if (typeof window.google === 'undefined') window.google = {};
+if (typeof window.google === 'undefined') 
+// ── COLLEGE NORMALIZATION & FEE STRUCTURE MATCHER ───────────────
+function normalizeCollegeNameKey(col) {
+  if (!col) return '';
+  var s = col.toString().trim().toUpperCase();
+  if (s.indexOf('BAMS') !== -1 || s.indexOf('AMAMCHRC') !== -1) return 'AMAMCHRC (BAMS)';
+  if (s.indexOf('BHMS') !== -1 || s.indexOf('AMHMCH') !== -1) return 'AMHMCH (BHMS)';
+  if (s.indexOf('GNM') !== -1 || s.indexOf('AMSON') !== -1) return 'AMSON (GNM)';
+  if (s.indexOf('DIPLOMA') !== -1 || s.indexOf('AMPV') !== -1) return 'AMPV (DIPLOMA)';
+  if (s.indexOf('AMCP') !== -1) return 'AMCP';
+  if (s.indexOf('AMGOI') !== -1) return 'AMGOI';
+  if (s.indexOf('ADCET') !== -1) return 'ADCET';
+  return s;
+}
+
+function findMatchingFeeStructure(roomType, studentCollege, structures) {
+  var targetType = (roomType || 'Classic Tripple').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
+  var normStudentCol = normalizeCollegeNameKey(studentCollege);
+
+  var activeStructures = (structures || []).filter(function(s) {
+    return (s.status || 'Active') === 'Active';
+  });
+
+  // 1. Exact college match on matching room type
+  if (normStudentCol) {
+    var colMatch = activeStructures.find(function(s) {
+      var sType = (s.roomType || s.room_type || '').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
+      var sCol = normalizeCollegeNameKey(s.collegeName || s.college_name);
+      return (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1) && (sCol === normStudentCol);
+    });
+    if (colMatch) return colMatch;
+  }
+
+  // 2. Fallback to default "All Colleges" / general structure for this room type
+  var defaultMatch = activeStructures.find(function(s) {
+    var sType = (s.roomType || s.room_type || '').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
+    var sCol = (s.collegeName || s.college_name || 'All Colleges').toString().trim().toLowerCase();
+    var isDefault = !sCol || sCol === 'all colleges' || sCol === 'all' || sCol === 'general' || sCol === 'default';
+    return (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1) && isDefault;
+  });
+  if (defaultMatch) return defaultMatch;
+
+  // 3. Fallback to any active structure for this room type
+  var anyRoomMatch = activeStructures.find(function(s) {
+    var sType = (s.roomType || s.room_type || '').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
+    return sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1;
+  });
+  if (anyRoomMatch) return anyRoomMatch;
+
+  return null;
+}
+
+window.google = {};
 if (typeof window.google.script === 'undefined') window.google.script = {};
 if (typeof window.google.script.run === 'undefined') {
   window.google.script.run = new Proxy({}, {
@@ -1541,14 +1593,70 @@ if (typeof window.google.script.run === 'undefined') {
         </div>
         <div id="fs-structures" class="hidden">
           <div class="card" style="margin-bottom:24px;">
-            <div class="card-header"><div><div class="card-title">Create New Fee Structure</div><div class="card-sub">One active structure per room type allowed</div></div></div>
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Structure Name *</label><input type="text" id="fs-name" class="form-input" placeholder="e.g. 2026-27 Single Room"/></div>
-              <div class="form-group"><label class="form-label">Room Type *</label><select id="fs-room-type" class="form-select"><option value="">-- Select Room Type --</option></select></div>
+            <div class="card-header">
+              <div>
+                <div class="card-title">Create New Fee Structure</div>
+                <div class="card-sub">Define general (All Colleges) or college-specific fee structures (e.g. for BAMS, BHMS, AMGOI)</div>
+              </div>
             </div>
-            <button class="btn btn-primary" onclick="doSaveFeeStructure()"><span class="material-icons-round">add_circle</span> Create Structure</button>
+            <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+              <div class="form-group"><label class="form-label">Structure Name *</label><input type="text" id="fs-name" class="form-input" placeholder="e.g. 2026-27 Classic Triple - BAMS"/></div>
+              <div class="form-group"><label class="form-label">Room Type *</label><select id="fs-room-type" class="form-select"><option value="">-- Select Room Type --</option></select></div>
+              <div class="form-group">
+                <label class="form-label">College Applicability *</label>
+                <select id="fs-college" class="form-select">
+                  <option value="All Colleges">-- All Colleges (Default / General) --</option>
+                  <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
+                  <option value="AMGOI">AMGOI</option>
+                  <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
+                  <option value="ADCET">ADCET</option>
+                  <option value="AMCP">AMCP (Pharmacy)</option>
+                  <option value="AMSON (GNM)">AMSON (GNM)</option>
+                  <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
+                  <option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option>
+                  <option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option>
+                  <option value="AMCON (B. SC. NURSING))">AMCON (B. SC. NURSING)</option>
+                  <option value="MVMIN (GNM)">MVMIN (GNM)</option>
+                  <option value="Other College">Other College</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+              <button class="btn btn-primary" onclick="doSaveFeeStructure()"><span class="material-icons-round">add_circle</span> Create Structure</button>
+              <span style="font-size:0.8rem;color:var(--text3);"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;margin-right:2px;">info</span> Choosing a specific college applies this fee exclusively to that college's students.</span>
+            </div>
           </div>
-          <div class="card"><div class="card-header"><div><div class="card-title">All Fee Structures</div></div><button class="btn btn-ghost btn-sm" onclick="loadFeeStructures()"><span class="material-icons-round">refresh</span></button></div><div class="table-container"><table><thead><tr><th>ID</th><th>Name</th><th>Room Type</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="fs-tbody"></tbody></table></div></div>
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+              <div>
+                <div class="card-title">All Fee Structures</div>
+                <div class="card-sub">College student-wise and room-wise fee configurations</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button class="btn btn-warning btn-sm" onclick="openRecalculateCollegeFeesModal()" title="Apply college-wise fee structures to existing students and update ledger balances">
+                  <span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">sync_alt</span> Apply / Correct Student Fees College-Wise
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="loadFeeStructures()" title="Refresh"><span class="material-icons-round">refresh</span></button>
+              </div>
+            </div>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Structure Name</th>
+                    <th>Room Type</th>
+                    <th>College Applicability</th>
+                    <th>Total Prescribed Fee</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="fs-tbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <div id="fs-heads" class="hidden">
           <div class="card" style="margin-bottom:24px;">
@@ -3145,6 +3253,7 @@ if (typeof window.google.script.run === 'undefined') {
           <button class="btn btn-ghost btn-sm" id="sfd-filter-receipts" onclick="filterSFD('Receipts',this)">🧾 Receipts</button>
         </div>
         <button class="btn btn-outline btn-sm" onclick="doReconcileCurrentStudentReceipts()" title="Auto-settle all receipts for this student against fee dues"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;margin-right:4px;">sync</span> Settle Receipts</button>
+        <button class="btn btn-outline btn-sm" onclick="doRecalculateCurrentStudentFee()" title="Recalculate and reconcile ledger against college fee structure"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;margin-right:4px;">calculate</span> Recalculate College Fees</button>
       </div>
       <!-- Ledger table -->
       <div id="sfd-ledger-section">
@@ -3723,6 +3832,149 @@ if (typeof window.google.script.run === 'undefined') {
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-fee-head')">Cancel</button>
       <button class="btn btn-primary" id="save-fh-btn" onclick="doSaveFeeHeadEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT FEE STRUCTURE MODAL -->
+<div id="modal-edit-fee-structure" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-edit-fee-structure')">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">Edit Fee Structure</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-edit-fee-structure')">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-fs-id" />
+      <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div class="form-group">
+          <label class="form-label">Structure Name *</label>
+          <input type="text" id="edit-fs-name" class="form-input" placeholder="e.g. 2026-27 Classic Triple - BAMS"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Room Type *</label>
+          <select id="edit-fs-room-type" class="form-select"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">College Applicability *</label>
+          <select id="edit-fs-college" class="form-select">
+            <option value="All Colleges">-- All Colleges (Default / General) --</option>
+            <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
+            <option value="AMGOI">AMGOI</option>
+            <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
+            <option value="ADCET">ADCET</option>
+            <option value="AMCP">AMCP (Pharmacy)</option>
+            <option value="AMSON (GNM)">AMSON (GNM)</option>
+            <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
+            <option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option>
+            <option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option>
+            <option value="AMCON (B. SC. NURSING))">AMCON (B. SC. NURSING)</option>
+            <option value="MVMIN (GNM)">MVMIN (GNM)</option>
+            <option value="Other College">Other College</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status *</label>
+          <select id="edit-fs-status" class="form-select">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-fee-structure')">Cancel</button>
+      <button class="btn btn-primary" id="save-fs-edit-btn" onclick="doSaveFeeStructureEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECALCULATE COLLEGE-WISE FEES MODAL -->
+<div id="modal-recalculate-college-fees" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-recalculate-college-fees')">
+  <div class="modal" style="max-width:940px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="display:flex;align-items:center;gap:8px;">
+          <span class="material-icons-round" style="color:var(--primary);font-size:22px;">sync_alt</span>
+          College-Wise Fee Correction &amp; Ledger Recalculation
+        </div>
+        <div style="font-size:0.78rem;color:var(--text2);margin-top:3px;">
+          Re-apply college-specific fee structures (e.g. BAMS +₹10,000) to existing allotted students while preserving 100% of recorded fee payments and receipts.
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-recalculate-college-fees')"><span class="material-icons-round">close</span></button>
+    </div>
+    <div class="modal-body">
+      <!-- Controls -->
+      <div style="display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;margin-bottom:16px;align-items:flex-end;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Target College</label>
+          <select id="rc-filter-college" class="form-select" onchange="loadRecalculateCollegePreview()">
+            <option value="All">All Colleges</option>
+            <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
+            <option value="AMGOI">AMGOI</option>
+            <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
+            <option value="ADCET">ADCET</option>
+            <option value="AMCP">AMCP</option>
+            <option value="AMSON (GNM)">AMSON (GNM)</option>
+            <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Academic Year</label>
+          <select id="rc-filter-year" class="form-select" onchange="loadRecalculateCollegePreview()">
+            <option value="2026-27">2026-27</option>
+            <option value="All">All Years</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadRecalculateCollegePreview()" style="height:42px;">
+          <span class="material-icons-round">refresh</span> Refresh Preview
+        </button>
+      </div>
+
+      <!-- Info Alert -->
+      <div style="margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:0.85rem;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;display:flex;align-items:center;gap:10px;">
+        <span class="material-icons-round" style="font-size:20px;color:var(--primary);">shield</span>
+        <div><strong>Safe Recalculation:</strong> All previously recorded fee receipts &amp; payments will be matched and preserved with 100% precision. Only the prescribed fee heads and balance dues will be adjusted to match the new college-wise structure.</div>
+      </div>
+
+      <!-- Summary Stat Chips -->
+      <div id="rc-summary-chips" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+        <div class="stat-card" style="padding:10px 14px;"><div class="stat-label" style="font-size:0.7rem;">Students To Process</div><div class="stat-value" id="rc-count" style="font-size:1.1rem;color:var(--primary);">0</div></div>
+        <div class="stat-card" style="padding:10px 14px;"><div class="stat-label" style="font-size:0.7rem;">Current Prescribed Total</div><div class="stat-value" id="rc-old-total" style="font-size:1.1rem;color:var(--text);">₹0</div></div>
+        <div class="stat-card" style="padding:10px 14px;"><div class="stat-label" style="font-size:0.7rem;">New Prescribed Total</div><div class="stat-value" id="rc-new-total" style="font-size:1.1rem;color:var(--success);">₹0</div></div>
+        <div class="stat-card" style="padding:10px 14px;"><div class="stat-label" style="font-size:0.7rem;">Total Paid (Preserved)</div><div class="stat-value" id="rc-paid-total" style="font-size:1.1rem;color:var(--primary);">₹0</div></div>
+      </div>
+
+      <!-- Preview Table -->
+      <div class="table-container" style="max-height:340px;overflow-y:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student Name</th>
+              <th>College</th>
+              <th>Room &amp; Type</th>
+              <th>Target Fee Structure</th>
+              <th>Current Total</th>
+              <th>New Total</th>
+              <th>Total Paid</th>
+              <th>New Balance</th>
+            </tr>
+          </thead>
+          <tbody id="rc-preview-tbody">
+            <tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px;">Loading preview...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-recalculate-college-fees')">Cancel</button>
+      <button class="btn btn-primary" id="btn-execute-recalculate" onclick="doExecuteCollegeFeeRecalculation()">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">check_circle</span>
+        Apply College-Wise Fee Adjustments (<span id="rc-btn-count">0</span> Students)
+      </button>
     </div>
   </div>
 </div>
@@ -4644,33 +4896,31 @@ window.google = {
 
               Promise.all([
                 _supabase.from('fee_structures').select('*'),
-                _supabase.from('fee_heads').select('*')
+                _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
+                _supabase.from('fee_heads').select('*'),
+                _supabase.from('students').select('*').eq('app_id', cleanAppId).single()
               ]).then(function(results) {
                 var structures = results[0].data || [];
-                var heads = results[1].data || [];
+                var colSetting = results[1].data && results[1].data[0];
+                var colMap = {};
+                if (colSetting && colSetting.value) {
+                  try { colMap = JSON.parse(colSetting.value); } catch(e){}
+                }
+                var heads = results[2].data || [];
+                var stData = results[3].data || {};
+                var studentCol = stData.college_name || '';
+
+                structures.forEach(function(s) {
+                  s.collegeName = colMap[s.id] || colMap[s.structure_id] || 'All Colleges';
+                });
 
                 var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
                 var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
 
-                var targetType = (roomType || 'Classic Tripple').toString().trim().toLowerCase();
-                var normTargetType = targetType.replace(/tripple/g, 'triple');
-
-                var matchedStruct = structures.find(function(s) {
-                  var sType = (s.room_type || s.roomType || '').toString().trim().toLowerCase();
-                  var normSType = sType.replace(/tripple/g, 'triple');
-                  return (normSType === normTargetType || sType === targetType) && (s.status || 'Active') === 'Active';
-                });
-
-                if (!matchedStruct && structures.length > 0) {
-                  matchedStruct = structures.find(function(s) {
-                    var sType = (s.room_type || s.roomType || '').toString().trim().toLowerCase();
-                    var normSType = sType.replace(/tripple/g, 'triple');
-                    return (normSType.indexOf(normTargetType) !== -1 || normTargetType.indexOf(normSType) !== -1) && (s.status || 'Active') === 'Active';
-                  });
-                }
+                var matchedStruct = findMatchingFeeStructure(roomType, studentCol, structures);
 
                 if (!matchedStruct) {
-                  return sCb({ success: false, entriesCreated: 0, message: 'No active fee structure found for room type "' + roomType + '".' });
+                  return sCb({ success: false, entriesCreated: 0, message: 'No active fee structure found for room type "' + roomType + '" and college "' + (studentCol || 'General') + '".' });
                 }
 
                 var mId = matchedStruct.id;
@@ -4772,6 +5022,7 @@ window.google = {
                     success: true,
                     entriesCreated: rowsToInsert.length,
                     structureName: matchedStruct.structure_name || matchedStruct.structureName,
+                    collegeName: matchedStruct.collegeName || 'All Colleges',
                     message: 'Applied fee structure (' + (matchedStruct.structure_name || matchedStruct.structureName) + ') for ' + studentName + '! (' + rowsToInsert.length + ' entries)'
                   });
                 }).catch(function(err) {
@@ -4963,25 +5214,56 @@ window.google = {
 
           // 14. Fee Structures
           getFeeStructures: function() {
-            _supabase.from('fee_structures').select('*').then(function(res) {
-              if (res.error) failureCb(res.error);
-              else {
-                var list = (res.data || []).map(function(fs) {
-                  var fsId = (fs.room_type === 'Classic Tripple' ? 'FS-2026-6005' : (fs.room_type === 'Premium Tripple' ? 'FS-2026-3951' : (fs.structure_id || fs.id)));
-                  return {
-                    structureId: fsId,
-                    structureName: fs.structure_name,
-                    roomType: fs.room_type,
-                    academicYear: fs.academic_year || '2026-27',
-                    totalPrescribedFee: fs.total_prescribed_fee,
-                    createdDate: '26/07/2026',
-                    createdBy: 'Admin',
-                    status: fs.status || 'Active'
-                  };
-                });
-                list.sort(function(a,b) { return (a.structureId > b.structureId) ? 1 : -1; });
-                successCb({ success: true, data: list });
+            Promise.all([
+              _supabase.from('fee_structures').select('*'),
+              _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
+              _supabase.from('fee_heads').select('*')
+            ]).then(function(results) {
+              var structRows = results[0].data || [];
+              var colSetting = results[1].data && results[1].data[0];
+              var colMap = {};
+              if (colSetting && colSetting.value) {
+                try { colMap = JSON.parse(colSetting.value); } catch(e){}
               }
+              var heads = results[2].data || [];
+              var headSums = {};
+              heads.forEach(function(h) {
+                var sId = h.structure_id;
+                var amt = parseFloat(h.amount) || 0;
+                var mult = h.frequency === 'Bi-annually' ? 2 : (h.frequency === 'Monthly' ? 10 : 1);
+                headSums[sId] = (headSums[sId] || 0) + (amt * mult);
+              });
+
+              var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+              var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+
+              var list = structRows.map(function(fs) {
+                var rawId = fs.id;
+                var sId = fs.structure_id || rawId;
+                var col = colMap[rawId] || colMap[sId] || 'All Colleges';
+                var computedSum = headSums[rawId] || headSums[sId];
+                if (!computedSum) {
+                  if (rawId === classicUuid || sId === 'FS-2026-6005') computedSum = (headSums[classicUuid] || headSums['FS-2026-6005'] || 95000);
+                  else if (rawId === premiumUuid || sId === 'FS-2026-3951') computedSum = (headSums[premiumUuid] || headSums['FS-2026-3951'] || 110000);
+                  else computedSum = parseFloat(fs.total_prescribed_fee) || 0;
+                }
+                var fsDisplayId = (fs.room_type === 'Classic Tripple' && col === 'All Colleges' && !fs.structure_id ? 'FS-2026-6005' : (fs.room_type === 'Premium Tripple' && col === 'All Colleges' && !fs.structure_id ? 'FS-2026-3951' : (fs.structure_id || rawId)));
+
+                return {
+                  id: rawId,
+                  structureId: fsDisplayId,
+                  structureName: fs.structure_name,
+                  roomType: fs.room_type,
+                  collegeName: col,
+                  academicYear: fs.academic_year || '2026-27',
+                  totalPrescribedFee: computedSum,
+                  createdDate: fs.created_at ? formatDateValue(fs.created_at) : '26/07/2026',
+                  createdBy: 'Admin',
+                  status: fs.status || 'Active'
+                };
+              });
+              list.sort(function(a,b) { return (a.structureId > b.structureId) ? 1 : -1; });
+              successCb({ success: true, data: list });
             }).catch(failureCb);
           },
 
@@ -6184,39 +6466,466 @@ window.google = {
           saveFeeStructure: function(structData) {
             var rand = Math.floor(1000 + Math.random() * 9000);
             var fsId = 'FS-' + (structData.academicYear || '2026-27').substring(0,4) + '-' + rand;
+            var colName = structData.collegeName || structData.college_name || 'All Colleges';
             var row = {
               structure_id: fsId,
               structure_name: structData.structureName,
               room_type: structData.roomType,
               academic_year: structData.academicYear || '2026-27',
               total_prescribed_fee: parseFloat(structData.totalPrescribedFee) || 0,
-              status: 'Active'
+              status: structData.status || 'Active'
             };
-            _supabase.from('fee_structures').insert([row]).then(function(res) {
+            _supabase.from('fee_structures').insert([row]).select().then(function(res) {
               if (res.error) failureCb(res.error);
-              else successCb({ success: true, structureId: fsId, message: 'Fee structure created!' });
+              else {
+                var insertedRow = (res.data && res.data[0]) || {};
+                var actualId = insertedRow.id || fsId;
+                _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
+                  var colMap = {};
+                  var sRow = sRes.data && sRes.data[0];
+                  if (sRow && sRow.value) {
+                    try { colMap = JSON.parse(sRow.value); } catch(e){}
+                  }
+                  colMap[actualId] = colName;
+                  colMap[fsId] = colName;
+                  _supabase.from('hostel_settings').upsert([{
+                    key: 'FEE_STRUCTURE_COLLEGES',
+                    value: JSON.stringify(colMap)
+                  }]).then(function() {
+                    successCb({ success: true, structureId: actualId, message: 'Fee structure created!' });
+                  }).catch(function() {
+                    successCb({ success: true, structureId: actualId, message: 'Fee structure created!' });
+                  });
+                });
+              }
+            }).catch(failureCb);
+          },
+
+          updateFeeStructure: function(structData) {
+            var sId = structData.structureId || structData.id;
+            var colName = structData.collegeName || structData.college_name || 'All Colleges';
+            var updateFields = {
+              structure_name: structData.structureName,
+              room_type: structData.roomType,
+              status: structData.status || 'Active'
+            };
+            _supabase.from('fee_structures').update(updateFields).or('id.eq.' + sId + ',structure_id.eq.' + sId).then(function(res) {
+              if (res.error) failureCb(res.error);
+              else {
+                _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
+                  var colMap = {};
+                  var sRow = sRes.data && sRes.data[0];
+                  if (sRow && sRow.value) {
+                    try { colMap = JSON.parse(sRow.value); } catch(e){}
+                  }
+                  colMap[sId] = colName;
+                  _supabase.from('hostel_settings').upsert([{
+                    key: 'FEE_STRUCTURE_COLLEGES',
+                    value: JSON.stringify(colMap)
+                  }]).then(function() {
+                    successCb({ success: true, message: 'Fee structure updated successfully!' });
+                  }).catch(function() {
+                    successCb({ success: true, message: 'Fee structure updated successfully!' });
+                  });
+                });
+              }
             }).catch(failureCb);
           },
 
           updateFeeStructureStatus: function(structureId, newStatus) {
-            _supabase.from('fee_structures').update({ status: newStatus }).eq('structure_id', structureId).then(function(res) {
-              if (res.error) {
-                _supabase.from('fee_structures').update({ status: newStatus }).eq('id', structureId).then(function(r2) {
-                  if (r2.error) failureCb(r2.error);
-                  else successCb({ success: true, message: 'Status updated to ' + newStatus });
-                }).catch(failureCb);
-              } else successCb({ success: true, message: 'Status updated to ' + newStatus });
+            _supabase.from('fee_structures').update({ status: newStatus }).or('structure_id.eq.' + structureId + ',id.eq.' + structureId).then(function(res) {
+              if (res.error) failureCb(res.error);
+              else successCb({ success: true, message: 'Status updated to ' + newStatus });
             }).catch(failureCb);
           },
 
           deleteFeeStructure: function(structureId) {
-            _supabase.from('fee_structures').delete().eq('structure_id', structureId).then(function(res) {
-              if (res.error) {
-                _supabase.from('fee_structures').delete().eq('id', structureId).then(function(r2) {
-                  if (r2.error) failureCb(r2.error);
-                  else successCb({ success: true, message: 'Fee structure deleted.' });
-                }).catch(failureCb);
-              } else successCb({ success: true, message: 'Fee structure deleted.' });
+            _supabase.from('fee_structures').delete().or('structure_id.eq.' + structureId + ',id.eq.' + structureId).then(function(res) {
+              if (res.error) failureCb(res.error);
+              else {
+                _supabase.from('fee_heads').delete().or('structure_id.eq.' + structureId).then(function() {
+                  _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
+                    var colMap = {};
+                    var sRow = sRes.data && sRes.data[0];
+                    if (sRow && sRow.value) {
+                      try { colMap = JSON.parse(sRow.value); } catch(e){}
+                    }
+                    delete colMap[structureId];
+                    _supabase.from('hostel_settings').upsert([{
+                      key: 'FEE_STRUCTURE_COLLEGES',
+                      value: JSON.stringify(colMap)
+                    }]).then(function() {
+                      successCb({ success: true, message: 'Fee structure deleted.' });
+                    }).catch(function() {
+                      successCb({ success: true, message: 'Fee structure deleted.' });
+                    });
+                  });
+                });
+              }
+            }).catch(failureCb);
+          },
+
+          // ── PREVIEW COLLEGE FEE RECALCULATION ───────────────────
+          previewCollegeFeeRecalculation: function(filterCollege, academicYear) {
+            Promise.all([
+              _supabase.from('students').select('*').not('room_number', 'is', null),
+              _supabase.from('fee_structures').select('*'),
+              _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
+              _supabase.from('fee_heads').select('*'),
+              _supabase.from('student_fee_ledger').select('*'),
+              _supabase.from('fee_receipts').select('*').neq('status', 'Cancelled')
+            ]).then(function(results) {
+              var students = results[0].data || [];
+              var structures = results[1].data || [];
+              var colSetting = results[2].data && results[2].data[0];
+              var colMap = {};
+              if (colSetting && colSetting.value) {
+                try { colMap = JSON.parse(colSetting.value); } catch(e){}
+              }
+              var allHeads = results[3].data || [];
+              var allLedger = results[4].data || [];
+              var allReceipts = results[5].data || [];
+
+              structures.forEach(function(s) {
+                s.collegeName = colMap[s.id] || colMap[s.structure_id] || 'All Colleges';
+              });
+
+              var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+              var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+
+              // Filter students
+              var normFilter = (filterCollege || 'All').trim();
+              var filteredStudents = students.filter(function(st) {
+                if (normFilter === 'All' || !normFilter) return true;
+                var stCol = (st.college_name || '').trim();
+                return stCol.toLowerCase().indexOf(normFilter.toLowerCase()) !== -1 || normFilter.toLowerCase().indexOf(stCol.toLowerCase()) !== -1;
+              });
+
+              var previewList = [];
+              var totalOldDemand = 0;
+              var totalNewDemand = 0;
+              var totalPaidSum = 0;
+
+              filteredStudents.forEach(function(st, idx) {
+                var cleanAppId = (st.app_id || '').trim();
+                var rType = st.room_type || 'Classic Tripple';
+                var stCol = st.college_name || '';
+
+                var matchedStruct = findMatchingFeeStructure(rType, stCol, structures);
+                var targetStructName = matchedStruct ? (matchedStruct.structure_name || matchedStruct.structureName) : 'No Structure Found';
+                var targetCollegeTag = matchedStruct ? (matchedStruct.collegeName || 'All Colleges') : '';
+
+                // Calculate target prescribed sum
+                var targetSum = 0;
+                if (matchedStruct) {
+                  var mId = matchedStruct.id;
+                  var mStructId = matchedStruct.structure_id || matchedStruct.structureId;
+                  var structHeads = allHeads.filter(function(h) {
+                    var hSid = h.structure_id;
+                    if (!hSid) return false;
+                    if (hSid === mId || hSid === mStructId) return true;
+                    if ((mId === classicUuid || mStructId === 'FS-2026-6005') && (hSid === classicUuid || hSid === 'FS-2026-6005')) return true;
+                    if ((mId === premiumUuid || mStructId === 'FS-2026-3951') && (hSid === premiumUuid || hSid === 'FS-2026-3951')) return true;
+                    return false;
+                  });
+                  structHeads.forEach(function(h) {
+                    var mult = h.frequency === 'Bi-annually' ? 2 : (h.frequency === 'Monthly' ? 10 : 1);
+                    targetSum += (parseFloat(h.amount) || 0) * mult;
+                  });
+                }
+
+                var stLedger = allLedger.filter(function(l){ return (l.app_id||'').trim() === cleanAppId; });
+                var currentDemand = stLedger.reduce(function(a,b){ return a + (parseFloat(b.applicable_amount)||0); }, 0);
+                var stReceipts = allReceipts.filter(function(r){ return (r.app_id||'').trim() === cleanAppId; });
+                var totalPaid = stReceipts.reduce(function(a,b){ return a + (parseFloat(b.amount_paid)||0); }, 0);
+                var newBalance = Math.max(0, targetSum - totalPaid);
+
+                totalOldDemand += currentDemand;
+                totalNewDemand += targetSum;
+                totalPaidSum += totalPaid;
+
+                previewList.push({
+                  rowIndex: idx + 1,
+                  appId: cleanAppId,
+                  studentName: st.full_name,
+                  collegeName: stCol,
+                  roomNumber: st.room_number || '-',
+                  roomType: rType,
+                  targetStructureName: targetStructName,
+                  targetCollegeTag: targetCollegeTag,
+                  currentDemand: currentDemand,
+                  newDemand: targetSum,
+                  totalPaid: totalPaid,
+                  newBalance: newBalance
+                });
+              });
+
+              successCb({
+                success: true,
+                data: previewList,
+                metrics: {
+                  studentCount: previewList.length,
+                  totalOldDemand: totalOldDemand,
+                  totalNewDemand: totalNewDemand,
+                  totalPaid: totalPaidSum,
+                  totalNewBalance: Math.max(0, totalNewDemand - totalPaidSum)
+                }
+              });
+            }).catch(failureCb);
+          },
+
+          // ── RECALCULATE SINGLE STUDENT FEE LEDGER ───────────────
+          recalculateStudentFeeLedger: function(appId, callback) {
+            var sCb = (typeof callback === 'function') ? callback : successCb;
+            var cleanAppId = (appId || '').toString().trim();
+            if (!cleanAppId) return sCb({ success: false, message: 'Invalid Student App ID' });
+
+            Promise.all([
+              _supabase.from('students').select('*').eq('app_id', cleanAppId).single(),
+              _supabase.from('fee_structures').select('*'),
+              _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
+              _supabase.from('fee_heads').select('*'),
+              _supabase.from('student_fee_ledger').select('*').eq('app_id', cleanAppId),
+              _supabase.from('fee_receipts').select('*').eq('app_id', cleanAppId).neq('status', 'Cancelled')
+            ]).then(function(results) {
+              var student = results[0].data;
+              if (!student) return sCb({ success: false, message: 'Student ' + cleanAppId + ' not found.' });
+
+              var structures = results[1].data || [];
+              var colSetting = results[2].data && results[2].data[0];
+              var colMap = {};
+              if (colSetting && colSetting.value) {
+                try { colMap = JSON.parse(colSetting.value); } catch(e){}
+              }
+              var allHeads = results[3].data || [];
+              var currentLedger = results[4].data || [];
+              var receipts = results[5].data || [];
+
+              var roomType = student.room_type || 'Classic Tripple';
+              var collegeName = student.college_name || '';
+
+              structures.forEach(function(s) {
+                s.collegeName = colMap[s.id] || colMap[s.structure_id] || 'All Colleges';
+              });
+
+              var matchedStruct = findMatchingFeeStructure(roomType, collegeName, structures);
+              if (!matchedStruct) {
+                return sCb({ success: false, message: 'No active fee structure found for room "' + roomType + '" and college "' + (collegeName || 'General') + '".' });
+              }
+
+              var mId = matchedStruct.id;
+              var mStructId = matchedStruct.structure_id || matchedStruct.id;
+
+              var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+              var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+
+              var structHeads = allHeads.filter(function(h) {
+                var hSid = h.structure_id;
+                if (!hSid) return false;
+                if (hSid === mId || hSid === mStructId) return true;
+                if ((mId === classicUuid || mStructId === 'FS-2026-6005') && (hSid === classicUuid || hSid === 'FS-2026-6005')) return true;
+                if ((mId === premiumUuid || mStructId === 'FS-2026-3951') && (hSid === premiumUuid || hSid === 'FS-2026-3951')) return true;
+                return false;
+              });
+
+              if (structHeads.length === 0) {
+                return sCb({ success: false, message: 'Fee structure "' + (matchedStruct.structure_name || matchedStruct.structureName) + '" has no fee heads.' });
+              }
+
+              // Preserve non-standard ledger entries (e.g. Linen charges, fine)
+              var standardKeywords = ['security', 'deposit', 'accom', 'rent', 'mess'];
+              var customLedgerRows = currentLedger.filter(function(l) {
+                var hLower = (l.head_name || '').toLowerCase();
+                return !standardKeywords.some(function(k) { return hLower.indexOf(k) !== -1; });
+              });
+
+              var todayDateStr = new Date().toISOString().split('T')[0];
+              var newLedgerRows = [];
+
+              structHeads.forEach(function(h) {
+                var freq = h.frequency || 'Bi-annually';
+                var amt = parseFloat(h.amount) || 0;
+                var hName = h.head_name || 'Fee Head';
+
+                if (freq === 'One-time') {
+                  newLedgerRows.push({
+                    ledger_id: 'LDG-2026-' + Math.floor(10000 + Math.random() * 90000),
+                    app_id: cleanAppId,
+                    student_name: student.full_name,
+                    head_name: hName,
+                    applicable_month: 'On Joining',
+                    academic_year: '2026-27',
+                    due_date: todayDateStr,
+                    applicable_amount: amt,
+                    paid_amount: 0,
+                    balance: amt,
+                    status: 'Pending',
+                    created_at: new Date().toISOString()
+                  });
+                } else if (freq === 'Bi-annually') {
+                  newLedgerRows.push({
+                    ledger_id: 'LDG-2026-' + Math.floor(10000 + Math.random() * 90000),
+                    app_id: cleanAppId,
+                    student_name: student.full_name,
+                    head_name: hName,
+                    applicable_month: 'Semester 1',
+                    academic_year: '2026-27',
+                    due_date: todayDateStr,
+                    applicable_amount: amt,
+                    paid_amount: 0,
+                    balance: amt,
+                    status: 'Pending',
+                    created_at: new Date().toISOString()
+                  });
+                  newLedgerRows.push({
+                    ledger_id: 'LDG-2026-' + Math.floor(10000 + Math.random() * 90000),
+                    app_id: cleanAppId,
+                    student_name: student.full_name,
+                    head_name: hName,
+                    applicable_month: 'Semester 2 (Feb 2027)',
+                    academic_year: '2026-27',
+                    due_date: '2027-02-05',
+                    applicable_amount: amt,
+                    paid_amount: 0,
+                    balance: amt,
+                    status: 'Pending',
+                    created_at: new Date().toISOString()
+                  });
+                } else {
+                  newLedgerRows.push({
+                    ledger_id: 'LDG-2026-' + Math.floor(10000 + Math.random() * 90000),
+                    app_id: cleanAppId,
+                    student_name: student.full_name,
+                    head_name: hName,
+                    applicable_month: 'On Joining',
+                    academic_year: '2026-27',
+                    due_date: todayDateStr,
+                    applicable_amount: amt,
+                    paid_amount: 0,
+                    balance: amt,
+                    status: 'Pending',
+                    created_at: new Date().toISOString()
+                  });
+                }
+              });
+
+              var allRowsToSettle = newLedgerRows.concat(customLedgerRows);
+              receipts.sort(function(a,b) { return (a.receipt_date || '').localeCompare(b.receipt_date || ''); });
+
+              receipts.forEach(function(rcpt) {
+                var remaining = parseFloat(rcpt.amount_paid) || 0;
+                var fType = (rcpt.fee_type || '').toLowerCase();
+                var fMonth = (rcpt.fee_month || '').toLowerCase();
+
+                // Pass 1: exact head + month
+                for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
+                  var row = allRowsToSettle[i];
+                  var bal = parseFloat(row.balance) || 0;
+                  if (bal <= 0) continue;
+                  var hName = (row.head_name || '').toLowerCase();
+                  var hMonth = (row.applicable_month || '').toLowerCase();
+
+                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) || (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1));
+                  var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
+
+                  if (headMatch && monthMatch) {
+                    var settle = Math.min(remaining, bal);
+                    row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
+                    row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
+                    row.status = row.balance <= 0 ? 'Paid' : 'Partial';
+                    remaining -= settle;
+                  }
+                }
+
+                // Pass 2: head match
+                for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
+                  var row = allRowsToSettle[i];
+                  var bal = parseFloat(row.balance) || 0;
+                  if (bal <= 0) continue;
+                  var hName = (row.head_name || '').toLowerCase();
+                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1));
+                  if (headMatch) {
+                    var settle = Math.min(remaining, bal);
+                    row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
+                    row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
+                    row.status = row.balance <= 0 ? 'Paid' : 'Partial';
+                    remaining -= settle;
+                  }
+                }
+
+                // Pass 3: generic fallback
+                for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
+                  var row = allRowsToSettle[i];
+                  var bal = parseFloat(row.balance) || 0;
+                  if (bal <= 0) continue;
+                  var settle = Math.min(remaining, bal);
+                  row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
+                  row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
+                  row.status = row.balance <= 0 ? 'Paid' : 'Partial';
+                  remaining -= settle;
+                }
+              });
+
+              _supabase.from('student_fee_ledger').delete().eq('app_id', cleanAppId).then(function(delRes) {
+                if (delRes.error) return sCb({ success: false, message: delRes.error.message });
+                _supabase.from('student_fee_ledger').insert(allRowsToSettle).then(function(insRes) {
+                  if (insRes.error) return sCb({ success: false, message: insRes.error.message });
+                  var totalNewDemand = allRowsToSettle.reduce(function(a,b){ return a + (parseFloat(b.applicable_amount)||0); }, 0);
+                  var totalPaid = allRowsToSettle.reduce(function(a,b){ return a + (parseFloat(b.paid_amount)||0); }, 0);
+                  var totalBal = allRowsToSettle.reduce(function(a,b){ return a + (parseFloat(b.balance)||0); }, 0);
+                  sCb({
+                    success: true,
+                    structureName: matchedStruct.structure_name || matchedStruct.structureName,
+                    collegeName: matchedStruct.collegeName || 'All Colleges',
+                    totalDemand: totalNewDemand,
+                    totalPaid: totalPaid,
+                    totalBalance: totalBal,
+                    message: 'Recalculated fees for ' + student.full_name + ' (' + (matchedStruct.structure_name || matchedStruct.structureName) + '). Total: ₹' + totalNewDemand.toLocaleString('en-IN') + ', Paid: ₹' + totalPaid.toLocaleString('en-IN') + ', Balance: ₹' + totalBal.toLocaleString('en-IN')
+                  });
+                }).catch(function(err) { sCb({ success: false, message: err.message }); });
+              }).catch(function(err) { sCb({ success: false, message: err.message }); });
+            }).catch(function(err) { sCb({ success: false, message: err.message }); });
+          },
+
+          // ── BATCH RECALCULATE ALL STUDENTS FEE LEDGER ───────────
+          recalculateAllStudentsFeeLedger: function(filterCollege, academicYear) {
+            Promise.all([
+              _supabase.from('students').select('*').not('room_number', 'is', null)
+            ]).then(function(results) {
+              var students = results[0].data || [];
+              var normFilter = (filterCollege || 'All').trim();
+              var targetStudents = students.filter(function(st) {
+                if (normFilter === 'All' || !normFilter) return true;
+                var stCol = (st.college_name || '').trim();
+                return stCol.toLowerCase().indexOf(normFilter.toLowerCase()) !== -1 || normFilter.toLowerCase().indexOf(stCol.toLowerCase()) !== -1;
+              });
+
+              if (targetStudents.length === 0) {
+                return successCb({ success: true, count: 0, message: 'No allotted students found for selected college.' });
+              }
+
+              var processed = 0;
+              var errors = [];
+              var countSuccess = 0;
+
+              function processNext(idx) {
+                if (idx >= targetStudents.length) {
+                  return successCb({
+                    success: true,
+                    count: countSuccess,
+                    total: targetStudents.length,
+                    message: 'Successfully recalculated fee structures for ' + countSuccess + ' of ' + targetStudents.length + ' students! All recorded payments were preserved and auto-settled.'
+                  });
+                }
+                var st = targetStudents[idx];
+                methods.recalculateStudentFeeLedger(st.app_id, function(res) {
+                  if (res && res.success) countSuccess++;
+                  else if (res && res.message) errors.push(st.full_name + ': ' + res.message);
+                  processNext(idx + 1);
+                });
+              }
+
+              processNext(0);
             }).catch(failureCb);
           },
 
@@ -6272,38 +6981,156 @@ window.google = {
           },
 
           addFeeHead: function(headData) {
-            var rand = Math.floor(1000 + Math.random() * 9000);
-            var headId = 'FH-2026-' + rand;
+            var sid = headData.structureId;
+            var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+            var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+            var actualSid = (sid === 'FS-2026-6005' ? classicUuid : (sid === 'FS-2026-3951' ? premiumUuid : sid));
+
             var row = {
-              head_id: headId,
-              structure_id: headData.structureId,
+              structure_id: actualSid,
               head_name: headData.headName,
               amount: parseFloat(headData.amount) || 0,
               frequency: headData.frequency || 'Bi-annually',
               due_day: parseInt(headData.dueDay) || 5,
               priority: parseInt(headData.priority) || 1
             };
-            _supabase.from('fee_heads').insert([row]).then(function(res) {
+            _supabase.from('fee_heads').insert([row]).select().then(function(res) {
               if (res.error) failureCb(res.error);
-              else successCb({ success: true, headId: headId, message: 'Fee head added!' });
+              else {
+                var newHead = (res.data && res.data[0]) || {};
+                successCb({ success: true, headId: newHead.id || 'FH-SAVED', message: 'Fee head added!' });
+              }
             }).catch(failureCb);
           },
 
           editFeeHead: function(headData) {
-            _supabase.from('fee_heads').update({
-              head_name: headData.headName,
-              amount: parseFloat(headData.amount) || 0,
-              frequency: headData.frequency,
-              due_day: parseInt(headData.dueDay) || 5,
-              priority: parseInt(headData.priority) || 1
-            }).eq('head_id', headData.headId).then(function(res) {
-              if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'Fee head updated!' });
+            var legacyMap = {
+              'FH-2026-8761': 'e15b28e9-9f80-4e00-99d1-35a569b4b406',
+              'FH-2026-2172': 'c14b1e55-515d-44cc-9245-329b7749dd7e',
+              'FH-2026-5925': 'f67ebac4-462b-4995-895c-789cc9f1bf72',
+              'FH-2026-6567': '44293a12-1452-40e5-8224-935e8d996c73',
+              'FH-2026-1547': '3edee3c4-6cfb-4cb6-bbf1-84a6124ab449',
+              'FH-2026-8209': '6ca6ac81-1923-454a-8304-dbfa3824ec66'
+            };
+            var targetId = headData.headId || headData.id;
+            var actualId = legacyMap[targetId] || targetId;
+            var newAmt = parseFloat(headData.amount) || 0;
+            var newName = headData.headName;
+
+            // Fetch old head first to know old name
+            _supabase.from('fee_heads').select('*').eq('id', actualId).then(function(fhRes) {
+              var oldHead = (fhRes.data && fhRes.data[0]) || {};
+              var oldName = oldHead.head_name || newName;
+
+              _supabase.from('fee_heads').update({
+                head_name: newName,
+                amount: newAmt,
+                frequency: headData.frequency,
+                due_day: parseInt(headData.dueDay) || 5,
+                priority: parseInt(headData.priority) || 1
+              }).eq('id', actualId).then(function(res) {
+                if (res.error) return failureCb(res.error);
+
+                // Auto-propagate to matching student ledger entries
+                _supabase.from('student_fee_ledger').select('*').or('head_name.eq.' + encodeURIComponent(oldName) + ',head_name.eq.' + encodeURIComponent(newName)).then(function(ldgRes) {
+                  var ldgRows = ldgRes.data || [];
+                  var updates = [];
+                  ldgRows.forEach(function(row) {
+                    var paid = parseFloat(row.paid_amount) || 0;
+                    var newBal = Math.max(0, newAmt - paid);
+                    var newStatus = newBal <= 0 ? 'Paid' : (paid > 0 ? 'Partial' : 'Pending');
+                    updates.push(_supabase.from('student_fee_ledger').update({
+                      head_name: newName,
+                      applicable_amount: newAmt,
+                      balance: newBal,
+                      status: newStatus
+                    }).eq('ledger_id', row.ledger_id));
+                  });
+
+                  Promise.all(updates).then(function() {
+                    successCb({
+                      success: true,
+                      updatedLedgerCount: updates.length,
+                      message: 'Fee head updated and applied to ' + updates.length + ' student ledger entries!'
+                    });
+                  }).catch(function() {
+                    successCb({ success: true, message: 'Fee head updated in settings!' });
+                  });
+                }).catch(function() {
+                  successCb({ success: true, message: 'Fee head updated in settings!' });
+                });
+              }).catch(failureCb);
+            }).catch(failureCb);
+          },
+
+          convertFeeHead: function(headData) {
+            var legacyMap = {
+              'FH-2026-8761': 'e15b28e9-9f80-4e00-99d1-35a569b4b406',
+              'FH-2026-2172': 'c14b1e55-515d-44cc-9245-329b7749dd7e',
+              'FH-2026-5925': 'f67ebac4-462b-4995-895c-789cc9f1bf72',
+              'FH-2026-6567': '44293a12-1452-40e5-8224-935e8d996c73',
+              'FH-2026-1547': '3edee3c4-6cfb-4cb6-bbf1-84a6124ab449',
+              'FH-2026-8209': '6ca6ac81-1923-454a-8304-dbfa3824ec66'
+            };
+            var targetId = headData.headId || headData.id;
+            var actualId = legacyMap[targetId] || targetId;
+            var newAmt = parseFloat(headData.amount) || 0;
+            var newName = headData.headName;
+
+            _supabase.from('fee_heads').select('*').eq('id', actualId).then(function(fhRes) {
+              var oldHead = (fhRes.data && fhRes.data[0]) || {};
+              var oldName = oldHead.head_name || newName;
+
+              _supabase.from('fee_heads').update({
+                head_name: newName,
+                amount: newAmt,
+                due_day: parseInt(headData.dueDay) || 5,
+                priority: parseInt(headData.priority) || 1
+              }).eq('id', actualId).then(function(res) {
+                if (res.error) return failureCb(res.error);
+
+                _supabase.from('student_fee_ledger').select('*').or('head_name.eq.' + encodeURIComponent(oldName) + ',head_name.eq.' + encodeURIComponent(newName)).then(function(ldgRes) {
+                  var ldgRows = ldgRes.data || [];
+                  var updates = [];
+                  ldgRows.forEach(function(row) {
+                    var paid = parseFloat(row.paid_amount) || 0;
+                    var newBal = Math.max(0, newAmt - paid);
+                    var newStatus = newBal <= 0 ? 'Paid' : (paid > 0 ? 'Partial' : 'Pending');
+                    updates.push(_supabase.from('student_fee_ledger').update({
+                      head_name: newName,
+                      applicable_amount: newAmt,
+                      balance: newBal,
+                      status: newStatus
+                    }).eq('ledger_id', row.ledger_id));
+                  });
+
+                  Promise.all(updates).then(function() {
+                    successCb({
+                      success: true,
+                      updatedLedgerCount: updates.length,
+                      message: 'Fee head converted and applied to ' + updates.length + ' student ledger entries!'
+                    });
+                  }).catch(function() {
+                    successCb({ success: true, message: 'Fee head converted!' });
+                  });
+                }).catch(function() {
+                  successCb({ success: true, message: 'Fee head converted!' });
+                });
+              }).catch(failureCb);
             }).catch(failureCb);
           },
 
           deleteFeeHead: function(headId) {
-            _supabase.from('fee_heads').delete().eq('head_id', headId).then(function(res) {
+            var legacyMap = {
+              'FH-2026-8761': 'e15b28e9-9f80-4e00-99d1-35a569b4b406',
+              'FH-2026-2172': 'c14b1e55-515d-44cc-9245-329b7749dd7e',
+              'FH-2026-5925': 'f67ebac4-462b-4995-895c-789cc9f1bf72',
+              'FH-2026-6567': '44293a12-1452-40e5-8224-935e8d996c73',
+              'FH-2026-1547': '3edee3c4-6cfb-4cb6-bbf1-84a6124ab449',
+              'FH-2026-8209': '6ca6ac81-1923-454a-8304-dbfa3824ec66'
+            };
+            var actualId = legacyMap[headId] || headId;
+            _supabase.from('fee_heads').delete().eq('id', actualId).then(function(res) {
               if (res.error) failureCb(res.error);
               else successCb({ success: true, message: 'Fee head deleted.' });
             }).catch(failureCb);
@@ -9978,32 +10805,45 @@ function renderFeeStructuresTable() {
   var tbody = document.getElementById('fs-tbody');
   if (!tbody) return;
   if (!allFeeStructures || !allFeeStructures.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="material-icons-round">category</span><h3>No fee structures yet</h3><p>Create one above</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="material-icons-round">category</span><h3>No fee structures yet</h3><p>Create one above</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = allFeeStructures.map(function(fs) {
     var sId = fs.structureId || fs.id || '';
+    var rawId = fs.id || sId;
     var sName = fs.structureName || fs.structure_name || '';
     var rType = fs.roomType || fs.room_type || '';
+    var colName = fs.collegeName || 'All Colleges';
+    var totalFee = parseFloat(fs.totalPrescribedFee) || 0;
     var st = fs.status || 'Active';
     var cr = fs.createdDate || fs.created_at || '26/07/2026';
     if (cr && typeof cr === 'string' && cr.indexOf('T') !== -1) {
       try { cr = new Date(cr).toLocaleDateString('en-GB'); } catch(e){}
     }
+
+    var colBadge = colName === 'All Colleges' || !colName
+      ? '<span class="badge" style="background:rgba(100,116,139,0.12);color:#475569;font-weight:600;"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">public</span> All Colleges (Default)</span>'
+      : '<span class="badge badge-active" style="background:rgba(99,102,241,0.12);color:#4338ca;font-weight:700;"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">school</span> ' + colName + '</span>';
+
     return '<tr>'
       + '<td style="font-family:monospace;font-size:0.78rem;color:var(--primary-light);">' + sId + '</td>'
       + '<td><strong>' + sName + '</strong></td>'
       + '<td><span class="badge badge-info">' + rType + '</span></td>'
+      + '<td>' + colBadge + '</td>'
+      + '<td style="font-weight:700;color:var(--success);">' + fmtMoney(totalFee) + '</td>'
       + '<td>' + statusBadge(st) + '</td>'
       + '<td style="color:var(--text2);font-size:0.85rem;">' + cr + '</td>'
       + '<td style="display:flex;gap:6px;align-items:center;">'
-        + '<button class="btn btn-ghost btn-sm" onclick="manageFeeStructureHeads(\'' + sId + '\')" title="Manage Fee Heads" style="font-size:0.75rem;padding:4px 8px;border-color:var(--primary);color:var(--primary);display:inline-flex;align-items:center;gap:4px;">'
+        + '<button class="btn btn-ghost btn-sm" onclick="manageFeeStructureHeads(\'' + rawId + '\')" title="Manage Fee Heads" style="font-size:0.75rem;padding:4px 8px;border-color:var(--primary);color:var(--primary);display:inline-flex;align-items:center;gap:4px;">'
           + '<span class="material-icons-round" style="font-size:14px;">tune</span> Heads'
         + '</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="toggleFeeStructureStatus(\'' + sId + '\',\'' + st + '\')" title="Toggle Status" style="font-size:0.75rem;padding:4px 8px;display:inline-flex;align-items:center;gap:4px;">'
+        + '<button class="btn btn-ghost btn-sm" onclick="openEditFeeStructureModal(\'' + rawId + '\')" title="Edit Structure" style="font-size:0.75rem;padding:4px 8px;border-color:var(--border);color:var(--text);display:inline-flex;align-items:center;gap:4px;">'
+          + '<span class="material-icons-round" style="font-size:14px;">edit</span> Edit'
+        + '</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="toggleFeeStructureStatus(\'' + rawId + '\',\'' + st + '\')" title="Toggle Status" style="font-size:0.75rem;padding:4px 8px;display:inline-flex;align-items:center;gap:4px;">'
           + '<span class="material-icons-round" style="font-size:14px;">' + (st === 'Active' ? 'pause_circle' : 'play_circle') + '</span> ' + (st === 'Active' ? 'Deactivate' : 'Activate')
         + '</button>'
-        + '<button class="btn btn-danger btn-sm" onclick="doDeleteFeeStructure(\'' + sId + '\',\'' + escapeJs(sName) + '\')" title="Delete" style="font-size:0.75rem;padding:4px 8px;display:inline-flex;align-items:center;">'
+        + '<button class="btn btn-danger btn-sm" onclick="doDeleteFeeStructure(\'' + rawId + '\',\'' + escapeJs(sName) + '\')" title="Delete" style="font-size:0.75rem;padding:4px 8px;display:inline-flex;align-items:center;">'
           + '<span class="material-icons-round" style="font-size:14px;">delete</span>'
         + '</button>'
       + '</td>'
@@ -10057,45 +10897,116 @@ function doDeleteFeeStructure(structureId, structureName) {
   });
 }
 
-function loadFeeStructureDropdowns(){
-  google.script.run.withSuccessHandler(function(res){if(!res.success)return;allFeeStructures=res.data;var sel=document.getElementById('fh-structure');sel.innerHTML='<option value="">-- Select Structure --</option>'+res.data.map(function(s){return '<option value="'+s.structureId+'">'+s.structureName+' ('+s.roomType+') \u2013 '+s.status+'</option>';}).join('');}).getFeeStructures();
+function openEditFeeStructureModal(structureId) {
+  var s = (allFeeStructures || []).find(function(item) {
+    return item.structureId === structureId || item.id === structureId;
+  });
+  if (!s) return;
+  document.getElementById('edit-fs-id').value = s.id || s.structureId;
+  document.getElementById('edit-fs-name').value = s.structureName || '';
+  
+  // Populate room types
+  var rtSel = document.getElementById('edit-fs-room-type');
+  if (rtSel) {
+    rtSel.innerHTML = (allRoomTypes || []).map(function(r) {
+      return '<option value="' + r.roomTypeName + '"' + (r.roomTypeName === s.roomType ? ' selected' : '') + '>' + r.roomTypeName + '</option>';
+    }).join('');
+  }
+
+  var colSel = document.getElementById('edit-fs-college');
+  if (colSel) colSel.value = s.collegeName || 'All Colleges';
+
+  var stSel = document.getElementById('edit-fs-status');
+  if (stSel) stSel.value = s.status || 'Active';
+
+  openModal('modal-edit-fee-structure');
 }
+
+function doSaveFeeStructureEdit() {
+  var sId = document.getElementById('edit-fs-id').value;
+  var name = document.getElementById('edit-fs-name').value.trim();
+  var rt = document.getElementById('edit-fs-room-type').value;
+  var col = document.getElementById('edit-fs-college').value;
+  var status = document.getElementById('edit-fs-status').value;
+
+  if (!name || !rt) {
+    showToast('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  setBtnLoading('save-fs-edit-btn', true);
+  google.script.run.withSuccessHandler(function(res) {
+    setBtnLoading('save-fs-edit-btn', false);
+    if (res.success) {
+      showToast('Fee structure updated!', 'success');
+      closeModal('modal-edit-fee-structure');
+      loadFeeStructures();
+      loadFeeStructureDropdowns();
+    } else {
+      showToast('Error: ' + res.message, 'error');
+    }
+  }).withFailureHandler(function(err) {
+    setBtnLoading('save-fs-edit-btn', false);
+    showToast('Error: ' + err.message, 'error');
+  }).updateFeeStructure({
+    structureId: sId,
+    structureName: name,
+    roomType: rt,
+    collegeName: col,
+    status: status
+  });
+}
+
+function loadFeeStructureDropdowns(){
+  google.script.run.withSuccessHandler(function(res){
+    if(!res.success) return;
+    allFeeStructures = res.data || [];
+    var sel = document.getElementById('fh-structure');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Select Structure --</option>' + (res.data || []).map(function(s){
+      var colTag = s.collegeName && s.collegeName !== 'All Colleges' ? ' | ' + s.collegeName : ' | All Colleges';
+      return '<option value="' + (s.id || s.structureId) + '">' + s.structureName + ' (' + s.roomType + colTag + ') – ' + s.status + '</option>';
+    }).join('');
+  }).getFeeStructures();
+}
+
 async function doSaveFeeStructure() {
   var name = document.getElementById('fs-name').value.trim();
   var rt = document.getElementById('fs-room-type').value;
+  var col = document.getElementById('fs-college') ? document.getElementById('fs-college').value : 'All Colleges';
   if (!name || !rt) {
     showToast('Please fill all fields.', 'error');
     return;
   }
   var clash = (allFeeStructures || []).filter(function(s) {
-    return s.roomType === rt && s.status === 'Active';
+    var sCol = s.collegeName || 'All Colleges';
+    return s.roomType === rt && sCol === col && s.status === 'Active';
   });
   if (clash.length > 0) {
-    showToast('An active fee structure already exists for "' + rt + '". Please deactivate it first.', 'warning');
+    showToast('An active fee structure already exists for "' + rt + '" & college "' + col + '". Please deactivate it first.', 'warning');
     return;
   }
-  try {
-    var sId = 'FS-' + Date.now().toString(36).toUpperCase();
-    const { error } = await _supabase.from('fee_structures').insert([{
-      structure_id: sId,
-      structure_name: name,
-      room_type: rt,
-      status: 'Active',
-      created_by: currentUser ? currentUser.name : 'Administrator'
-    }]);
-    if (error) {
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      showToast('Fee structure created!', 'success');
+
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
+      showToast('Fee structure created for ' + col + '!', 'success');
       document.getElementById('fs-name').value = '';
       document.getElementById('fs-room-type').value = '';
-      if (typeof loadFeeStructures === 'function') loadFeeStructures();
-      if (typeof loadFeeStructureDropdowns === 'function') loadFeeStructureDropdowns();
+      loadFeeStructures();
+      loadFeeStructureDropdowns();
+    } else {
+      showToast('Error: ' + res.message, 'error');
     }
-  } catch (err) {
-    showToast('Server error: ' + err.message, 'error');
-  }
+  }).withFailureHandler(function(err) {
+    showToast('Error: ' + err.message, 'error');
+  }).saveFeeStructure({
+    structureName: name,
+    roomType: rt,
+    collegeName: col,
+    academicYear: '2026-27'
+  });
 }
+
 function loadFeeHeads(sid){
   google.script.run.withSuccessHandler(function(res){
     if(!res.success){showToast('Error: '+res.message,'error');return;}
@@ -10116,7 +11027,8 @@ function loadFeeHeads(sid){
     }).join('')+'</tbody></table></div>';
   }).getFeeHeads(sid);
 }
-async function doAddFeeHead() {
+
+function doAddFeeHead() {
   var sid = document.getElementById('fh-structure').value;
   var name = document.getElementById('fh-name').value.trim();
   var amount = document.getElementById('fh-amount').value;
@@ -10129,31 +11041,28 @@ async function doAddFeeHead() {
     return;
   }
 
-  try {
-    var hId = 'FH-' + Date.now().toString(36).toUpperCase();
-    const { error } = await _supabase.from('fee_heads').insert([{
-      head_id: hId,
-      structure_id: sid,
-      head_name: name,
-      amount: parseFloat(amount),
-      frequency: freq,
-      due_day: parseInt(dueDay) || 5,
-      priority: parseInt(priority) || 99
-    }]);
-
-    if (error) {
-      showToast('Error adding fee head: ' + error.message, 'error');
-    } else {
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
       showToast('Fee head added!', 'success');
       document.getElementById('fh-name').value = '';
       document.getElementById('fh-amount').value = '';
       document.getElementById('fh-frequency').value = '';
       document.getElementById('fh-priority').value = '1';
       if (typeof loadFeeHeads === 'function') loadFeeHeads(sid);
+      if (typeof loadFeeStructures === 'function') loadFeeStructures();
+    } else {
+      showToast('Error: ' + res.message, 'error');
     }
-  } catch (err) {
+  }).withFailureHandler(function(err) {
     showToast('Server error: ' + err.message, 'error');
-  }
+  }).addFeeHead({
+    structureId: sid,
+    headName: name,
+    amount: parseFloat(amount),
+    frequency: freq,
+    dueDay: parseInt(dueDay) || 5,
+    priority: parseInt(priority) || 1
+  });
 }
 
 function onFHStructureChange() {
@@ -10165,11 +11074,128 @@ function onFHStructureChange() {
     if (chipsArea) chipsArea.innerHTML = '<div class="empty-state"><span class="material-icons-round">tune</span><h3>Select a fee structure above</h3></div>';
     return;
   }
-  var struct = (allFeeStructures || []).find(function(s){ return s.structureId === sid; });
+  var struct = (allFeeStructures || []).find(function(s){ return s.structureId === sid || s.id === sid; });
   if (subtitle && struct) {
-    subtitle.textContent = 'Fee heads for ' + struct.structureName + ' (' + struct.roomType + ')';
+    var colTag = struct.collegeName && struct.collegeName !== 'All Colleges' ? ' | ' + struct.collegeName : '';
+    subtitle.textContent = 'Fee heads for ' + struct.structureName + ' (' + struct.roomType + colTag + ')';
   }
   loadFeeHeads(sid);
+}
+
+// ── COLLEGE-WISE RECALCULATION MODAL HANDLERS ──────────────────
+var _rcPreviewData = [];
+
+function openRecalculateCollegeFeesModal() {
+  openModal('modal-recalculate-college-fees');
+  loadRecalculateCollegePreview();
+}
+
+function loadRecalculateCollegePreview() {
+  var col = document.getElementById('rc-filter-college') ? document.getElementById('rc-filter-college').value : 'All';
+  var yr = document.getElementById('rc-filter-year') ? document.getElementById('rc-filter-year').value : '2026-27';
+  var tbody = document.getElementById('rc-preview-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:24px;"><span class="spinner-sm"></span> Loading student fee calculations...</td></tr>';
+
+  google.script.run.withSuccessHandler(function(res) {
+    if (!res.success) {
+      showToast('Error loading preview: ' + res.message, 'error');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--danger);padding:20px;">' + res.message + '</td></tr>';
+      return;
+    }
+    _rcPreviewData = res.data || [];
+    var m = res.metrics || {};
+    document.getElementById('rc-count').textContent = m.studentCount || 0;
+    document.getElementById('rc-btn-count').textContent = m.studentCount || 0;
+    document.getElementById('rc-old-total').textContent = fmtMoney(m.totalOldDemand || 0);
+    document.getElementById('rc-new-total').textContent = fmtMoney(m.totalNewDemand || 0);
+    document.getElementById('rc-paid-total').textContent = fmtMoney(m.totalPaid || 0);
+
+    if (!_rcPreviewData.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:24px;">No allotted students found for ' + col + '.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = _rcPreviewData.map(function(row) {
+      var diff = row.newDemand - row.currentDemand;
+      var diffBadge = diff > 0 ? '<span style="color:var(--warning);font-size:0.75rem;margin-left:4px;">(+' + fmtMoney(diff) + ')</span>' : (diff < 0 ? '<span style="color:var(--success);font-size:0.75rem;margin-left:4px;">(' + fmtMoney(diff) + ')</span>' : '');
+      return '<tr>'
+        + '<td style="font-size:0.78rem;color:var(--text3);">' + row.rowIndex + '</td>'
+        + '<td><strong>' + row.studentName + '</strong><br><span style="font-family:monospace;font-size:0.72rem;color:var(--text3);">' + row.appId + '</span></td>'
+        + '<td><span class="badge badge-active" style="font-size:0.72rem;">' + row.collegeName + '</span></td>'
+        + '<td><strong>' + row.roomNumber + '</strong><br><span style="font-size:0.72rem;color:var(--text2);">' + row.roomType + '</span></td>'
+        + '<td><span style="font-weight:600;color:var(--primary);">' + row.targetStructureName + '</span><br><span style="font-size:0.72rem;color:var(--text3);">' + row.targetCollegeTag + '</span></td>'
+        + '<td style="color:var(--text2);">' + fmtMoney(row.currentDemand) + '</td>'
+        + '<td style="font-weight:700;color:var(--primary);">' + fmtMoney(row.newDemand) + diffBadge + '</td>'
+        + '<td style="color:var(--success);font-weight:600;">' + fmtMoney(row.totalPaid) + '</td>'
+        + '<td style="font-weight:700;color:var(--danger);">' + fmtMoney(row.newBalance) + '</td>'
+        + '</tr>';
+    }).join('');
+  }).withFailureHandler(function(err) {
+    showToast('Error: ' + err.message, 'error');
+  }).previewCollegeFeeRecalculation(col, yr);
+}
+
+function doExecuteCollegeFeeRecalculation() {
+  var col = document.getElementById('rc-filter-college') ? document.getElementById('rc-filter-college').value : 'All';
+  var yr = document.getElementById('rc-filter-year') ? document.getElementById('rc-filter-year').value : '2026-27';
+
+  showConfirm({
+    title: 'Recalculate College-Wise Fees?',
+    msg: 'This will update fee demands for all allotted students from "' + col + '" to their matching fee structure.\n\n100% of recorded receipts and payments will be preserved and auto-settled against the new fee heads.',
+    icon: 'sync_alt',
+    iconColor: 'primary',
+    okLabel: 'Yes, Apply Changes',
+    okClass: 'btn-primary',
+    hasInput: false,
+    onConfirm: function() {
+      setBtnLoading('btn-execute-recalculate', true);
+      showToast('Recalculating student fee structures...', 'info');
+      google.script.run.withSuccessHandler(function(res) {
+        setBtnLoading('btn-execute-recalculate', false);
+        if (res.success) {
+          showToast('✓ ' + res.message, 'success');
+          closeModal('modal-recalculate-college-fees');
+          if (typeof loadPendingFees === 'function') loadPendingFees();
+          if (typeof loadAllotments === 'function') loadAllotments();
+          if (typeof loadFees === 'function') loadFees();
+          if (typeof loadDashboard === 'function') loadDashboard();
+        } else {
+          showToast('Error: ' + res.message, 'error');
+        }
+      }).withFailureHandler(function(err) {
+        setBtnLoading('btn-execute-recalculate', false);
+        showToast('Error: ' + err.message, 'error');
+      }).recalculateAllStudentsFeeLedger(col, yr);
+    }
+  });
+}
+
+function doRecalculateCurrentStudentFee() {
+  if (!_currentSfdAppId) return;
+  showConfirm({
+    title: 'Recalculate College Fee for ' + _currentSfdName + '?',
+    msg: 'Re-apply ' + (_currentSfdCollege || 'college') + ' fee structure and reconcile all previous fee receipts against the new dues?',
+    icon: 'calculate',
+    iconColor: 'primary',
+    okLabel: 'Yes, Recalculate',
+    okClass: 'btn-primary',
+    hasInput: false,
+    onConfirm: function() {
+      showToast('Recalculating fee ledger...', 'info');
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) {
+          showToast('✓ ' + res.message, 'success');
+          viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+          if (typeof loadPendingFees === 'function') loadPendingFees();
+          if (typeof loadAllotments === 'function') loadAllotments();
+        } else {
+          showToast('Error: ' + res.message, 'error');
+        }
+      }).withFailureHandler(function(err) {
+        showToast('Error: ' + err.message, 'error');
+      }).recalculateStudentFeeLedger(_currentSfdAppId);
+    }
+  });
 }
 
 function showFeeSetupTab(tab, el) {
@@ -16819,6 +17845,12 @@ window.showToast = showToast;
 if (typeof openBankReconModal !== 'undefined') window.openBankReconModal = openBankReconModal;
 if (typeof openEditReceipt !== 'undefined') window.openEditReceipt = openEditReceipt;
 if (typeof doCancelReceipt !== 'undefined') window.doCancelReceipt = doCancelReceipt;
+if (typeof openEditFeeStructureModal !== 'undefined') window.openEditFeeStructureModal = openEditFeeStructureModal;
+if (typeof doSaveFeeStructureEdit !== 'undefined') window.doSaveFeeStructureEdit = doSaveFeeStructureEdit;
+if (typeof openRecalculateCollegeFeesModal !== 'undefined') window.openRecalculateCollegeFeesModal = openRecalculateCollegeFeesModal;
+if (typeof loadRecalculateCollegePreview !== 'undefined') window.loadRecalculateCollegePreview = loadRecalculateCollegePreview;
+if (typeof doExecuteCollegeFeeRecalculation !== 'undefined') window.doExecuteCollegeFeeRecalculation = doExecuteCollegeFeeRecalculation;
+if (typeof doRecalculateCurrentStudentFee !== 'undefined') window.doRecalculateCurrentStudentFee = doRecalculateCurrentStudentFee;
 if (typeof openCollectModal !== 'undefined') window.openCollectModal = openCollectModal;
 if (typeof viewStudentFeeDetail !== 'undefined') window.viewStudentFeeDetail = viewStudentFeeDetail;
 if (typeof openPhysicalReportingModal !== 'undefined') window.openPhysicalReportingModal = openPhysicalReportingModal;

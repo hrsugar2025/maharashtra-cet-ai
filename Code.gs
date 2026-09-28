@@ -2727,25 +2727,50 @@ function isRoomTypeMatch(structRoomType, targetRoomType) {
   return matchCount >= Math.min(words1.length, words2.length) && matchCount > 0;
 }
 
-function findMatchingFeeStructure(roomType, activeStructures) {
+function normalizeCollegeNameGas(col) {
+  if (!col) return "";
+  var s = col.toString().trim().toUpperCase();
+  if (s.indexOf("BAMS") !== -1 || s.indexOf("AMAMCHRC") !== -1) return "AMAMCHRC (BAMS)";
+  if (s.indexOf("BHMS") !== -1 || s.indexOf("AMHMCH") !== -1) return "AMHMCH (BHMS)";
+  if (s.indexOf("GNM") !== -1 || s.indexOf("AMSON") !== -1) return "AMSON (GNM)";
+  if (s.indexOf("DIPLOMA") !== -1 || s.indexOf("AMPV") !== -1) return "AMPV (DIPLOMA)";
+  if (s.indexOf("AMCP") !== -1) return "AMCP";
+  if (s.indexOf("AMGOI") !== -1) return "AMGOI";
+  if (s.indexOf("ADCET") !== -1) return "ADCET";
+  return s;
+}
+
+function findMatchingFeeStructure(roomType, studentCollege, activeStructures) {
   if (!activeStructures || !activeStructures.length) return null;
   var target = normalizeRoomType(roomType);
+  var normCol = normalizeCollegeNameGas(studentCollege);
 
-  // Pass 1: exact normalized match
-  for (var i = 0; i < activeStructures.length; i++) {
-    var s = activeStructures[i];
-    if (normalizeRoomType(s.roomType) === target) return s;
+  // Pass 1: exact room type + college match
+  if (normCol) {
+    for (var i = 0; i < activeStructures.length; i++) {
+      var s = activeStructures[i];
+      if ((normalizeRoomType(s.roomType) === target || isRoomTypeMatch(s.roomType, roomType)) && normalizeCollegeNameGas(s.collegeName) === normCol) {
+        return s;
+      }
+    }
   }
 
-  // Pass 2: token match (e.g. "Classic Triple" matches "Classic Tripple")
+  // Pass 2: default "All Colleges" structure for this room type
   for (var i = 0; i < activeStructures.length; i++) {
     var s = activeStructures[i];
-    if (isRoomTypeMatch(s.roomType, roomType)) return s;
+    var sCol = (s.collegeName || "All Colleges").toString().trim().toLowerCase();
+    if ((normalizeRoomType(s.roomType) === target || isRoomTypeMatch(s.roomType, roomType)) && (!sCol || sCol === "all colleges" || sCol === "all")) {
+      return s;
+    }
   }
 
-  // Pass 3: fallback if only 1 active structure exists
+  // Pass 3: fallback to any active room type match
+  for (var i = 0; i < activeStructures.length; i++) {
+    var s = activeStructures[i];
+    if (normalizeRoomType(s.roomType) === target || isRoomTypeMatch(s.roomType, roomType)) return s;
+  }
+
   if (activeStructures.length === 1) return activeStructures[0];
-
   return null;
 }
 
