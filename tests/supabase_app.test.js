@@ -329,6 +329,18 @@ class HostelAppEngine {
 
     return { success: true, message: 'Physical status updated to ' + cleanStatus };
   }
+
+  async changeRoomAllotment(oldAllotmentId, newRoomNumber, newRoomType) {
+    const rawId = (oldAllotmentId || '').toString().trim();
+    const targetAppId = this.getNormalizedAppId(rawId);
+    
+    await this.db.from('students').update({
+      room_number: newRoomNumber,
+      room_type: newRoomType
+    }).eq('app_id', targetAppId);
+
+    return { success: true, message: 'Room allotment changed to Room ' + newRoomNumber };
+  }
 }
 
 // Unit & End-to-End Tests
@@ -703,3 +715,26 @@ test('14. Payment Mode Normalization (categorizing transaction UTRs as Online/UP
   assert.equal(normalizePaymentMode('662207522802'), 'Online/UPI');
   assert.equal(normalizePaymentMode('QR Code'), 'QR Code');
 });
+
+test('15. Room Transfer / Change Room (e.g. ALLOT-2026-4001)', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  // Directly insert student ALLOT-2026-4001 (APP-2026-4001) in room GF-23
+  await supabase.from('students').insert([{
+    app_id: 'APP-2026-4001',
+    name: 'Sneha Santosh Pukale.',
+    room_number: 'GF-23',
+    room_type: 'Classic Tripple',
+    physical_status: 'Reported'
+  }]);
+
+  // Execute room transfer from ALLOT-2026-4001 to FF-117 (Premium Tripple)
+  const res = await engine.changeRoomAllotment('ALLOT-2026-4001', 'FF-117', 'Premium Tripple');
+  assert.equal(res.success, true);
+
+  const student = supabase.tables.students.find(s => s.app_id === 'APP-2026-4001');
+  assert.equal(student.room_number, 'FF-117');
+  assert.equal(student.room_type, 'Premium Tripple');
+});
+

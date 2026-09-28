@@ -734,6 +734,7 @@ function submitStudentApplication(formData) {
 
 function getStudentApplications(statusFilter, academicYear) {
   try {
+    try { syncFormResponsesToApplications(); } catch (se) { Logger.log("Auto-sync form responses: " + se.message); }
     var sheet = getSheet("STUDENT_APPLICATIONS");
     var data = sheet.getDataRange().getValues();
     if (data.length <= 1) return { success: true, data: [] };
@@ -4095,7 +4096,7 @@ function onFormSubmitTrigger(e) {
 }
 
 function logFormHeaders() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
     var name = sheets[i].getName();
@@ -4104,6 +4105,152 @@ function logFormHeaders() {
       var headers = sheets[i].getRange(1, 1, 1, sheets[i].getLastColumn()).getValues()[0];
       Logger.log("Headers for " + name + ": " + JSON.stringify(headers));
     }
+  }
+}
+
+function syncFormResponsesToApplications() {
+  try {
+    var ss = getSpreadsheet();
+    var sheets = ss.getSheets();
+    var formSheet = null;
+    
+    // Find the sheet storing Google Form responses
+    for (var s = 0; s < sheets.length; s++) {
+      var sName = sheets[s].getName();
+      if (sName.indexOf("Form Responses") !== -1 || sName.indexOf("Responses") !== -1 || sName.indexOf("Form") !== -1) {
+        formSheet = sheets[s];
+        break;
+      }
+    }
+    
+    if (!formSheet) return { success: false, message: "Form Responses sheet not found" };
+    
+    var data = formSheet.getDataRange().getValues();
+    if (data.length <= 1) return { success: true, count: 0 };
+    
+    var headers = data[0] || [];
+    var appSheet = getSheet("STUDENT_APPLICATIONS");
+    var existingApps = appSheet.getDataRange().getValues();
+    
+    // Build set of existing Mobile Numbers, Aadhar, or Student Name + Mobile combination
+    var existingKeys = {};
+    for (var e = 1; e < existingApps.length; e++) {
+      var mob = (existingApps[e][6] || "").toString().trim(); // Column G: CONTACT_NUMBER
+      var aadh = (existingApps[e][15] || "").toString().trim(); // Column P: AADHAR_NUMBER
+      var nameVal = (existingApps[e][2] || "").toString().trim().toLowerCase(); // Column C: STUDENT_NAME
+      var fatherVal = (existingApps[e][3] || "").toString().trim().toLowerCase(); // Column D: FATHER_NAME
+      
+      if (aadh && aadh !== "0" && aadh !== "999999999999" && aadh.length >= 8) existingKeys["aadh:" + aadh] = true;
+      if (nameVal && mob) existingKeys["namemob:" + nameVal + "_" + mob] = true;
+      if (nameVal && fatherVal) existingKeys["namefather:" + nameVal + "_" + fatherVal] = true;
+    }
+    
+    // Find column indices for questions from form headers
+    var findColIndex = function(possibleKeys) {
+      var clean = function(str) { return str.toString().toLowerCase().replace(/[^a-z0-9]/g, ""); };
+      var cleanedPossibles = possibleKeys.map(clean);
+      for (var c = 0; c < headers.length; c++) {
+        if (cleanedPossibles.indexOf(clean(headers[c])) !== -1) return c;
+      }
+      return -1;
+    };
+
+    var colStudentName   = findColIndex(["studentname", "nameofstudent", "name", "fullname", "nameofstaff", "studentfullname", "applicantname", "nameofapplicant", "candidatename"]);
+    var colFatherName    = findColIndex(["fathername", "fathersname", "father", "fathernameofstudent", "fatherfullname", "guardiansname", "guardianname"]);
+    var colMotherName    = findColIndex(["mothername", "mothersname", "mother", "motherfullname"]);
+    var colDOB           = findColIndex(["dateofbirth", "dob", "birthdate", "dateofbirthdob", "birth"]);
+    var colContact       = findColIndex(["contactnumber", "studentcontactnumber", "mobile", "mobileno", "mobilenumber", "phone", "studentmobile", "studentcontact", "studentphonenumber", "mobilephone", "whatsappnumber", "contactno", "phoneno", "cellphone"]);
+    var colParentContact = findColIndex(["parentcontact", "parentcontactnumber", "parentmobile", "fathercontact", "guardiancontact", "parentphone", "mothercontact", "parentmobileno", "parentsmobilenumber", "fathersmobile"]);
+    var colEmail         = findColIndex(["email", "emailaddress", "emailid", "studentemail", "mailid"]);
+    var colAddress       = findColIndex(["address", "permanentaddress", "residenceaddress", "fulladdress", "residentialaddress", "homeaddress"]);
+    var colCity          = findColIndex(["city", "town", "district", "citytown", "nativecity"]);
+    var colState         = findColIndex(["state", "region", "nativestate"]);
+    var colCourse        = findColIndex(["course", "branch", "stream", "department", "dept", "coursebranch", "selectcourse", "courseenrolled", "courseappliedfor", "degreecourse", "education"]);
+    var colYearOfStudy   = findColIndex(["yearofstudy", "year", "currentyear", "yearofcourse", "class", "academicyear", "yearofadmission", "studyingyear"]);
+    var colCollegeName   = findColIndex(["collegename", "college", "institutename", "institute", "nameofcollege", "selectcollege", "schoolcollegename", "nameofcollegeinstitute"]);
+    var colAadhar        = findColIndex(["aadharnumber", "aadharcardno", "aadhar", "aadharcard", "aadharno", "uid", "aadhaarnumber", "aadhaarcardnumber", "aadhaarcardno", "aadhaarno", "aadhaar"]);
+    var colEmergName     = findColIndex(["emergencycontactname", "emergencyname", "contactperson", "emergencycontactperson"]);
+    var colEmergNo       = findColIndex(["emergencycontactnumber", "emergencycontact", "emergencyphone", "emergencycontactno", "emergencycontactmobile", "emergencymobile"]);
+    var colRoomPref      = findColIndex(["roomtypepreference", "roompreference", "preferenceofroom", "roomtype", "roomtypepreferred", "selectroomtype", "roomtypechoice"]);
+
+    var importedCount = 0;
+    
+    for (var r = 1; r < data.length; r++) {
+      var row = data[r];
+      var sName = (colStudentName !== -1 && row[colStudentName]) ? row[colStudentName].toString().trim() : "";
+      var mob = (colContact !== -1 && row[colContact]) ? row[colContact].toString().trim() : "";
+      var aadh = (colAadhar !== -1 && row[colAadhar]) ? row[colAadhar].toString().trim() : "";
+      var fName = (colFatherName !== -1 && row[colFatherName]) ? row[colFatherName].toString().trim() : "";
+      
+      if (!sName) continue;
+      
+      // Check if already imported using composite keys
+      var nameKey = sName.toLowerCase();
+      var fatherKey = fName.toLowerCase();
+      var isDuplicate = false;
+
+      if (aadh && aadh !== "0" && aadh !== "999999999999" && aadh.length >= 8 && existingKeys["aadh:" + aadh]) isDuplicate = true;
+      if (nameKey && mob && existingKeys["namemob:" + nameKey + "_" + mob]) isDuplicate = true;
+      if (nameKey && fatherKey && existingKeys["namefather:" + nameKey + "_" + fatherKey]) isDuplicate = true;
+
+      if (isDuplicate) {
+        continue; // Skip duplicate
+      }
+      
+      var formData = {
+        studentName:            sName,
+        fatherName:             fName,
+        motherName:             (colMotherName !== -1 && row[colMotherName]) ? row[colMotherName].toString().trim() : "",
+        dateOfBirth:            (colDOB !== -1 && row[colDOB]) ? formatDateValue(row[colDOB]) : "",
+        contactNumber:          mob,
+        parentContact:          (colParentContact !== -1 && row[colParentContact]) ? row[colParentContact].toString().trim() : "",
+        email:                  (colEmail !== -1 && row[colEmail]) ? row[colEmail].toString().trim() : "",
+        address:                (colAddress !== -1 && row[colAddress]) ? row[colAddress].toString().trim() : "",
+        city:                   (colCity !== -1 && row[colCity]) ? row[colCity].toString().trim() : "",
+        state:                  (colState !== -1 && row[colState]) ? row[colState].toString().trim() : "Maharashtra",
+        course:                 (colCourse !== -1 && row[colCourse]) ? row[colCourse].toString().trim() : "",
+        yearOfStudy:            (colYearOfStudy !== -1 && row[colYearOfStudy]) ? row[colYearOfStudy].toString().trim() : "",
+        collegeName:            normalizeCollegeName((colCollegeName !== -1 && row[colCollegeName]) ? row[colCollegeName].toString().trim() : ""),
+        aadharNumber:           aadh,
+        emergencyContactName:   (colEmergName !== -1 && row[colEmergName]) ? row[colEmergName].toString().trim() : "",
+        emergencyContactNumber: (colEmergNo !== -1 && row[colEmergNo]) ? row[colEmergNo].toString().trim() : "",
+        roomTypePreference:     (colRoomPref !== -1 && row[colRoomPref]) ? row[colRoomPref].toString().trim() : ""
+      };
+      
+      var res = submitStudentApplication(formData);
+      if (res.success) {
+        if (mob) existingKeys["mob:" + mob] = true;
+        if (aadh) existingKeys["aadh:" + aadh] = true;
+        if (nameKey && mob) existingKeys["namemob:" + nameKey + "_" + mob] = true;
+        if (nameKey && fatherKey) existingKeys["namefather:" + nameKey + "_" + fatherKey] = true;
+        existingKeys["nameonly:" + nameKey] = true;
+        importedCount++;
+      }
+    }
+    
+    return { success: true, importedCount: importedCount };
+  } catch (err) {
+    Logger.log("syncFormResponsesToApplications error: " + err.message);
+    return { success: false, message: err.message };
+  }
+}
+
+function setupFormSubmitTrigger() {
+  try {
+    var ss = getSpreadsheet();
+    var triggers = ScriptApp.getProjectTriggers();
+    for (var i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === "onFormSubmitTrigger") {
+        return { success: true, message: "Trigger already active." };
+      }
+    }
+    ScriptApp.newTrigger("onFormSubmitTrigger")
+      .forSpreadsheet(ss)
+      .onFormSubmit()
+      .create();
+    return { success: true, message: "On form submit trigger installed successfully." };
+  } catch (err) {
+    return { success: false, message: err.message };
   }
 }
 
@@ -8526,7 +8673,7 @@ function syncAllDataToSupabase() {
     }
 
     // 5. Sync Students (STUDENT_APPLICATIONS & Form Responses)
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getSpreadsheet();
     var allSheets = ss.getSheets();
     var sRows = [];
 

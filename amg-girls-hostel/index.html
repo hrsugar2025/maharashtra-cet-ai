@@ -1448,7 +1448,7 @@ if (typeof window.google.script.run === 'undefined') {
           <button class="tab" onclick="filterApps('Rejected',this)">Rejected</button>
         </div>
         <div class="card">
-          <div class="card-header"><div><div class="card-title">Student Applications</div><div class="card-sub" id="apps-count">Loading&hellip;</div></div><div class="search-input-wrap"><span class="material-icons-round">search</span><input type="text" id="apps-search" class="form-input" placeholder="Search name, ID&hellip;" oninput="renderAppsTable()"/></div></div>
+          <div class="card-header"><div><div class="card-title">Student Applications</div><div class="card-sub" id="apps-count">Loading&hellip;</div></div><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-outline btn-sm" onclick="syncFormResponses()" id="btn-sync-form-responses" title="Sync Google Form responses sheet to Applications"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">sync</span> Sync Google Form</button><div class="search-input-wrap"><span class="material-icons-round">search</span><input type="text" id="apps-search" class="form-input" placeholder="Search name, ID&hellip;" oninput="renderAppsTable()"/></div></div></div>
           <div class="table-container"><table><thead><tr><th>App ID</th><th>Date</th><th>Student Name</th><th>Course</th><th>Room Pref.</th><th>Status</th><th>Actions</th></tr></thead><tbody id="apps-tbody"></tbody></table></div>
         </div>
       </div>
@@ -5526,15 +5526,23 @@ window.google = {
             var appId = 'APP-' + new Date().getFullYear() + '-' + rand;
             var newStudent = {
               app_id: appId,
-              full_name: formData.studentName,
-              contact_number: formData.contactNumber,
-              parent_contact: formData.parentContact,
-              email: formData.email,
-              address: formData.address,
-              city: formData.city,
-              course: formData.course,
-              year_of_study: formData.yearOfStudy,
-              college_name: formData.collegeName,
+              submission_date: formatDateValue(new Date()),
+              full_name: formData.studentName || '',
+              father_name: formData.fatherName || '',
+              mother_name: formData.motherName || '',
+              dob: formatDateValue(formData.dateOfBirth) || formData.dateOfBirth || '',
+              contact_number: formData.contactNumber || '',
+              parent_contact: formData.parentContact || '',
+              email: formData.email || '',
+              address: formData.address || '',
+              city: formData.city || '',
+              state: formData.state || 'Maharashtra',
+              course: formData.course || '',
+              year_of_study: formData.yearOfStudy || '',
+              college_name: formData.collegeName || 'AMGOI',
+              aadhar_number: formData.aadharNumber || '',
+              emergency_contact_name: formData.emergencyContactName || '',
+              emergency_contact_number: formData.emergencyContactNumber || '',
               room_type: formData.roomTypePreference || 'Classic Tripple',
               status: 'Pending',
               academic_year: formData.academicYear || '2026-27',
@@ -6390,14 +6398,99 @@ window.google = {
           },
 
           changeRoomAllotment: function(oldAllotmentId, newRoomId, newRoomNumber, newRoomType, changedBy, applyNewFees) {
-            // Find student from old room or allotment
-            _supabase.from('students').update({
+            var rawId = (oldAllotmentId || '').toString().trim();
+            var targetAppId = getNormalizedAppId(rawId);
+            var rawNoPrefix = rawId.replace(/^ALLOT-/, '').replace(/^ALT-/, '').replace(/^APP-/, '');
+
+            var studentPayload = {
               room_number: newRoomNumber,
               room_type: newRoomType
-            }).eq('room_number', oldAllotmentId).then(function(res) {
-              if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber });
-            }).catch(failureCb);
+            };
+
+            var filterExpr = 'app_id.eq.' + targetAppId + ',app_id.eq.' + rawId + ',app_id.eq.' + rawNoPrefix + ',room_number.eq.' + rawId;
+
+            _supabase.from('students').select('*').or(filterExpr).then(function(stRes) {
+              var stRow = stRes.data && stRes.data[0];
+              var actualAppId = (stRow && stRow.app_id) ? stRow.app_id : targetAppId;
+              var stName = (stRow && (stRow.full_name || stRow.name || stRow.student_name)) || '';
+
+              _supabase.from('students').update(studentPayload).or('app_id.eq.' + actualAppId + ',' + filterExpr).then(function() {
+                _supabase.from('hostel_settings').select('*').eq('key', 'ROOM_ALLOTMENTS_DATA').then(function(sRes) {
+                  var allotments = [];
+                  var sRow = sRes.data && sRes.data[0];
+                  if (sRow && sRow.value) {
+                    try { allotments = JSON.parse(sRow.value); } catch(e) {}
+                  }
+
+                  var existingIdx = allotments.findIndex(function(a){
+                    var aApp = (a.appId || '').toString().trim();
+                    var aId = (a.allotmentId || '').toString().trim();
+                    return aId === rawId || aApp === actualAppId || aApp === targetAppId || aApp === rawId || aApp.replace(/^APP-/,'') === rawNoPrefix || aId.replace(/^ALLOT-/,'').replace(/^ALT-/,'') === rawNoPrefix;
+                  });
+
+                  var finalName = stName || (existingIdx !== -1 ? allotments[existingIdx].studentName : '') || 'Student';
+
+                  if (existingIdx !== -1) {
+                    allotments[existingIdx].studentName = finalName;
+                    allotments[existingIdx].roomNumber = newRoomNumber;
+                    allotments[existingIdx].roomId = newRoomId || newRoomNumber;
+                    allotments[existingIdx].roomType = newRoomType;
+                  } else {
+                    allotments.push({
+                      allotmentId: rawId.indexOf('ALLOT-') === 0 ? rawId : ('ALLOT-' + rawNoPrefix),
+                      appId: actualAppId,
+                      studentName: finalName,
+                      roomId: newRoomId || newRoomNumber,
+                      roomNumber: newRoomNumber,
+                      roomType: newRoomType,
+                      allotmentDate: formatDateValue(new Date()),
+                      expectedVacatingDate: '31-May-2027',
+                      status: 'Active',
+                      allottedBy: changedBy || 'Admin',
+                      academicYear: '2026-27',
+                      physicalStatus: (stRow && stRow.physical_status) || 'Not Reported'
+                    });
+                  }
+
+                  _supabase.from('hostel_settings').upsert([{
+                    key: 'ROOM_ALLOTMENTS_DATA',
+                    value: JSON.stringify(allotments)
+                  }]).then(function() {
+                    if (applyNewFees) {
+                      _supabase.from('student_fee_ledger').delete().eq('app_id', actualAppId).eq('status', 'Pending').then(function() {
+                        methods.generateStudentFeeDemand(actualAppId, finalName, newRoomNumber, newRoomType, formatDateValue(new Date()), function(feeRes) {
+                          successCb({
+                            success: true,
+                            feeApplied: feeRes && feeRes.success && (feeRes.entriesCreated || 0) > 0,
+                            entriesCreated: (feeRes && feeRes.entriesCreated) || 0,
+                            message: 'Room allotment changed to Room ' + newRoomNumber + '.'
+                          });
+                        });
+                      }).catch(function() {
+                        methods.generateStudentFeeDemand(actualAppId, finalName, newRoomNumber, newRoomType, formatDateValue(new Date()), function(feeRes) {
+                          successCb({
+                            success: true,
+                            feeApplied: feeRes && feeRes.success && (feeRes.entriesCreated || 0) > 0,
+                            entriesCreated: (feeRes && feeRes.entriesCreated) || 0,
+                            message: 'Room allotment changed to Room ' + newRoomNumber + '.'
+                          });
+                        });
+                      });
+                    } else {
+                      successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber + '.' });
+                    }
+                  }).catch(function() {
+                    successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber + '.' });
+                  });
+                }).catch(function() {
+                  successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber + '.' });
+                });
+              }).catch(failureCb);
+            }).catch(function() {
+              _supabase.from('students').update(studentPayload).eq('app_id', targetAppId).then(function() {
+                successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber + '.' });
+              }).catch(failureCb);
+            });
           }
         };
 
@@ -6947,15 +7040,23 @@ function submitStudentForm(){
     var appId = 'APP-' + new Date().getFullYear() + '-' + rand;
     var newStudent = {
       app_id: appId,
-      full_name: data.studentName,
-      contact_number: data.contactNumber,
-      parent_contact: data.parentContact,
-      email: data.email,
-      address: data.address,
-      city: data.city,
-      course: data.course,
-      year_of_study: data.yearOfStudy,
-      college_name: data.collegeName,
+      submission_date: formatDateValue(new Date()),
+      full_name: data.studentName || '',
+      father_name: data.fatherName || '',
+      mother_name: data.motherName || '',
+      dob: formatDateValue(data.dateOfBirth) || data.dateOfBirth || '',
+      contact_number: data.contactNumber || '',
+      parent_contact: data.parentContact || '',
+      email: data.email || '',
+      address: data.address || '',
+      city: data.city || '',
+      state: data.state || 'Maharashtra',
+      course: data.course || '',
+      year_of_study: data.yearOfStudy || '',
+      college_name: data.collegeName || 'AMGOI',
+      aadhar_number: data.aadharNumber || '',
+      emergency_contact_name: data.emergencyContactName || '',
+      emergency_contact_number: data.emergencyContactNumber || '',
       room_type: data.roomTypePreference || 'Classic Tripple',
       status: 'Pending',
       academic_year: '2026-27',
@@ -7072,6 +7173,181 @@ function loadDashboard(token, silent){
       console.error('loadDashboard error:', err);
     })
     .getAppBootstrapBundle(viewingAcademicYear);
+}
+
+async function syncFormResponses() {
+  setBtnLoading('btn-sync-form-responses', true);
+  
+  // Method 1: If running inside native Google Apps Script environment
+  if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.syncFormResponsesToApplications === 'function' && !google.script.run._isProxy) {
+    google.script.run.withSuccessHandler(function(res) {
+      setBtnLoading('btn-sync-form-responses', false);
+      if (res && res.success) {
+        showToast((res.importedCount > 0 ? ('Synced ' + res.importedCount + ' new form response(s)!') : 'All Google Form responses are already synced.'), 'success');
+        loadApplications(null, false);
+      } else {
+        showToast('Sync note: ' + (res ? res.message : 'No new responses'), 'info');
+      }
+    }).withFailureHandler(function(err) {
+      setBtnLoading('btn-sync-form-responses', false);
+      showToast('Error syncing form: ' + err.message, 'error');
+    }).syncFormResponsesToApplications();
+    return;
+  }
+  
+  // Method 2: Running on Vercel / Supabase Web Deployment (Direct Sheet CSV Sync)
+  try {
+    var csvUrl = "https://docs.google.com/spreadsheets/d/1L-k5OH4GKs0oKZcHj1aaXdcWibcOh337ryA8WTQ2UIc/gviz/tq?tqx=out:csv&sheet=Form%20Responses%201";
+    var resp = await fetch(csvUrl);
+    if (!resp.ok) throw new Error("Could not fetch Google Form responses sheet");
+    var csvText = await resp.text();
+    
+    var parseCSV = function(text) {
+      var lines = text.split(/\r?\n/);
+      var result = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        var cols = [];
+        var inQuotes = false;
+        var curVal = "";
+        for (var c = 0; c < line.length; c++) {
+          var char = line[c];
+          if (char === '"') {
+            if (inQuotes && line[c+1] === '"') {
+              curVal += '"';
+              c++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === ',' && !inQuotes) {
+            cols.push(curVal.trim());
+            curVal = "";
+          } else {
+            curVal += char;
+          }
+        }
+        cols.push(curVal.trim());
+        result.push(cols);
+      }
+      return result;
+    };
+    
+    var rows = parseCSV(csvText);
+    if (rows.length <= 1) {
+      setBtnLoading('btn-sync-form-responses', false);
+      showToast('No form responses found in Google Sheet.', 'info');
+      return;
+    }
+    
+    var headers = rows[0].map(function(h){ return (h || '').toString().trim(); });
+    var cleanH = function(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ""); };
+    var findColIndex = function(possibleKeys) {
+      var cleanedPossibles = possibleKeys.map(cleanH);
+      for (var c = 0; c < headers.length; c++) {
+        if (cleanedPossibles.indexOf(cleanH(headers[c])) !== -1) return c;
+      }
+      return -1;
+    };
+    
+    var colStudentName   = findColIndex(["studentname", "nameofstudent", "name", "fullname", "studentfullname", "applicantname", "nameofapplicant"]);
+    var colFatherName    = findColIndex(["fathername", "fathersname", "father"]);
+    var colMotherName    = findColIndex(["mothername", "mothersname", "mother"]);
+    var colDOB           = findColIndex(["dateofbirth", "dob", "birthdate"]);
+    var colContact       = findColIndex(["contactnumber", "studentcontactnumber", "mobile", "mobileno", "phone"]);
+    var colParentContact = findColIndex(["parentcontact", "parentcontactnumber", "parentmobile", "fathercontact"]);
+    var colEmail         = findColIndex(["email", "emailaddress", "emailid"]);
+    var colAddress       = findColIndex(["address", "permanentaddress", "fulladdress"]);
+    var colCity          = findColIndex(["city", "town", "district"]);
+    var colState         = findColIndex(["state", "region"]);
+    var colCourse        = findColIndex(["course", "branch", "stream", "department"]);
+    var colYearOfStudy   = findColIndex(["yearofstudy", "year", "currentyear"]);
+    var colCollegeName   = findColIndex(["collegename", "college", "institutename"]);
+    var colAadhar        = findColIndex(["aadharnumber", "aadharcardno", "aadhar"]);
+    var colEmergName     = findColIndex(["emergencycontactname", "emergencyname"]);
+    var colEmergNo       = findColIndex(["emergencycontactnumber", "emergencycontact"]);
+    var colRoomPref      = findColIndex(["roomtypepreference", "roompreference"]);
+    
+    var sbRes = await _supabase.from('students').select('full_name, contact_number, aadhar_number, father_name');
+    var existingApps = sbRes.data || [];
+    
+    var existingKeys = {};
+    existingApps.forEach(function(s) {
+      var mob = (s.contact_number || "").trim();
+      var aadh = (s.aadhar_number || "").trim();
+      var nameVal = (s.full_name || "").trim().toLowerCase();
+      var fatherVal = (s.father_name || "").trim().toLowerCase();
+      if (aadh && aadh !== "0" && aadh !== "999999999999" && aadh.length >= 8) existingKeys["aadh:" + aadh] = true;
+      if (nameVal && mob) existingKeys["namemob:" + nameVal + "_" + mob] = true;
+      if (nameVal && fatherVal) existingKeys["namefather:" + nameVal + "_" + fatherVal] = true;
+    });
+    
+    var toInsert = [];
+    for (var r = 1; r < rows.length; r++) {
+      var row = rows[r];
+      var sName = (colStudentName !== -1 && row[colStudentName]) ? row[colStudentName].trim() : "";
+      if (!sName) continue;
+      
+      var mob = (colContact !== -1 && row[colContact]) ? row[colContact].trim() : "";
+      var aadh = (colAadhar !== -1 && row[colAadhar]) ? row[colAadhar].trim() : "";
+      var fName = (colFatherName !== -1 && row[colFatherName]) ? row[colFatherName].trim() : "";
+      
+      var nameKey = sName.toLowerCase();
+      var fatherKey = fName.toLowerCase();
+      var isDuplicate = false;
+
+      if (aadh && aadh !== "0" && aadh !== "999999999999" && aadh.length >= 8 && existingKeys["aadh:" + aadh]) isDuplicate = true;
+      if (nameKey && mob && existingKeys["namemob:" + nameKey + "_" + mob]) isDuplicate = true;
+      if (nameKey && fatherKey && existingKeys["namefather:" + nameKey + "_" + fatherKey]) isDuplicate = true;
+      
+      if (isDuplicate) continue;
+      
+      var appId = "APP-2026-" + Math.floor(1000 + Math.random() * 9000);
+      var newStudent = {
+        app_id: appId,
+        full_name: sName,
+        father_name: fName,
+        mother_name: (colMotherName !== -1 && row[colMotherName]) ? row[colMotherName].trim() : "",
+        dob: (colDOB !== -1 && row[colDOB]) ? formatDateValue(row[colDOB]) : "",
+        contact_number: mob,
+        parent_contact: (colParentContact !== -1 && row[colParentContact]) ? row[colParentContact].trim() : "",
+        email: (colEmail !== -1 && row[colEmail]) ? row[colEmail].trim() : "",
+        address: (colAddress !== -1 && row[colAddress]) ? row[colAddress].trim() : "",
+        city: (colCity !== -1 && row[colCity]) ? row[colCity].trim() : "",
+        state: (colState !== -1 && row[colState]) ? row[colState].trim() : "Maharashtra",
+        course: (colCourse !== -1 && row[colCourse]) ? row[colCourse].trim() : "",
+        year_of_study: (colYearOfStudy !== -1 && row[colYearOfStudy]) ? row[colYearOfStudy].trim() : "",
+        college_name: (colCollegeName !== -1 && row[colCollegeName]) ? row[colCollegeName].trim() : "AMGOI",
+        aadhar_number: aadh,
+        emergency_contact_name: (colEmergName !== -1 && row[colEmergName]) ? row[colEmergName].trim() : "",
+        emergency_contact_number: (colEmergNo !== -1 && row[colEmergNo]) ? row[colEmergNo].trim() : "",
+        room_type: (colRoomPref !== -1 && row[colRoomPref]) ? row[colRoomPref].trim() : "Classic Tripple",
+        status: "Pending",
+        academic_year: "2026-27"
+      };
+      
+      toInsert.push(newStudent);
+      if (mob) existingKeys["mob:" + mob] = true;
+      if (aadh) existingKeys["aadh:" + aadh] = true;
+      if (nameKey && mob) existingKeys["namemob:" + nameKey + "_" + mob] = true;
+      if (nameKey && fatherKey) existingKeys["namefather:" + nameKey + "_" + fatherKey] = true;
+    }
+    
+    if (toInsert.length > 0) {
+      var insRes = await _supabase.from('students').upsert(toInsert, { onConflict: 'app_id' });
+      if (insRes.error) throw insRes.error;
+      showToast('Successfully synced ' + toInsert.length + ' new Google Form response(s) directly into Supabase!', 'success');
+    } else {
+      showToast('All Google Form responses are already synced in Supabase.', 'info');
+    }
+    
+    loadApplications(null, false);
+  } catch (err) {
+    console.error("syncFormResponses error:", err);
+    showToast('Error syncing Google Form responses: ' + err.message, 'error');
+  } finally {
+    setBtnLoading('btn-sync-form-responses', false);
+  }
 }
 
 function loadApplications(token, silent){
@@ -8858,21 +9134,45 @@ function doCancelReceipt(receiptId){
 
 function openChangeRoom(allotmentId, studentName, roomNumber, roomType){
   document.getElementById('cr-allot-id').value = allotmentId;
-  document.getElementById('cr-current-info').innerHTML = '<strong>Student:</strong> ' + studentName + '<br><strong>Current Room:</strong> Room ' + roomNumber + ' (' + roomType + ')';
+  document.getElementById('cr-current-info').innerHTML = '<strong>Student:</strong> ' + escapeHtml(studentName) + '<br><strong>Current Room:</strong> Room ' + escapeHtml(roomNumber) + ' (' + escapeHtml(roomType) + ')';
   document.getElementById('cr-new-room').innerHTML = '<option value="">Loading rooms...</option>';
   document.getElementById('cr-apply-new-fees').checked = false;
   document.getElementById('cr-fee-note').classList.add('hidden');
-  
-  google.script.run.withSuccessHandler(function(res){
-    if(!res.success) {
-      document.getElementById('cr-new-room').innerHTML = '<option value="">Error loading rooms</option>';
+
+  function populateRooms(roomList) {
+    var rooms = (roomList || []).filter(function(r){
+      var rNo = r.roomNumber || r.room_number || '';
+      return rNo !== roomNumber;
+    });
+    var sel = document.getElementById('cr-new-room');
+    if (!sel) return;
+    if (!rooms.length) {
+      sel.innerHTML = '<option value="">-- No available rooms --</option>';
       return;
     }
-    var rooms = (res.data || []).filter(function(r){ return r.roomNumber !== roomNumber; });
-    document.getElementById('cr-new-room').innerHTML = '<option value="">-- Select Room --</option>' + rooms.map(function(r){
-      return '<option value="'+r.roomId+'" data-number="'+r.roomNumber+'" data-type="'+r.roomType+'">Room '+r.roomNumber+' &ndash; '+r.roomType+' (Available: '+r.available+')</option>';
+    sel.innerHTML = '<option value="">-- Select Room --</option>' + rooms.map(function(r){
+      var rId = r.roomId || r.roomNumber || r.room_number || r.id;
+      var rNum = r.roomNumber || r.room_number || rId;
+      var rType = r.roomType || r.room_type || 'Classic Tripple';
+      var avail = (typeof r.available !== 'undefined') ? r.available : Math.max(0, (r.capacity || 3) - (r.occupied || r.current_occupancy || 0));
+      return '<option value="'+escapeHtml(rId)+'" data-number="'+escapeHtml(rNum)+'" data-type="'+escapeHtml(rType)+'">Room '+escapeHtml(rNum)+' &ndash; '+escapeHtml(rType)+' (Available: '+avail+')</option>';
     }).join('');
-  }).getRooms(true);
+  }
+
+  if (Array.isArray(allRooms) && allRooms.length > 0) {
+    populateRooms(allRooms);
+  }
+  
+  google.script.run.withSuccessHandler(function(res){
+    if(res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      populateRooms(res.data);
+    }
+  }).withFailureHandler(function(err){
+    console.warn('Failed to load rooms dynamically:', err);
+    if (Array.isArray(allRooms) && allRooms.length > 0) {
+      populateRooms(allRooms);
+    }
+  }).getRooms(false);
   
   openModal('modal-change-room');
 }
@@ -8933,7 +9233,7 @@ function doChangeRoom(){
   }).withFailureHandler(function(err){
     setBtnLoading('cr-confirm-btn', false);
     showToast('Server error: ' + err.message, 'error');
-  }).changeRoomAllotment(allotId, roomId, roomNumber, roomType, currentUser.name, applyNewFees);
+  }).changeRoomAllotment(allotId, roomId, roomNumber, roomType, (currentUser && currentUser.name) ? currentUser.name : 'Admin', applyNewFees);
 }
 
 function populateFeeStudentDropdown(students){
