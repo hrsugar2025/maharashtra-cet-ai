@@ -9283,30 +9283,18 @@ async function doAddReceipt() {
 
   try {
     var receiptObj = {
-      receiptId: receiptId,
       receipt_id: receiptId,
-      appId: appId,
       app_id: appId,
-      studentName: sName,
       student_name: sName,
-      roomNumber: roomNum,
       room_number: roomNum,
-      feeType: ft,
       fee_type: ft,
-      feeMonth: feeMonth,
       fee_month: feeMonth,
-      academicYear: feeYear,
       academic_year: feeYear,
-      amountPaid: amountPaid,
       amount_paid: amountPaid,
-      paymentMode: mode,
       payment_mode: mode,
-      transactionId: txnId,
       transaction_id: txnId,
-      receiptDate: formatDateValue(todayIso),
       receipt_date: todayIso,
-      collectedBy: typeof currentUser !== 'undefined' && currentUser ? currentUser.name : 'Administrator',
-      collected_by: typeof currentUser !== 'undefined' && currentUser ? currentUser.name : 'Administrator',
+      collected_by: (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'Administrator',
       remarks: remarks,
       status: 'Active',
       recon_status: mode.toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'
@@ -16160,6 +16148,8 @@ if (typeof openCollectModal !== 'undefined') window.openCollectModal = openColle
 if (typeof viewStudentFeeDetail !== 'undefined') window.viewStudentFeeDetail = viewStudentFeeDetail;
 if (typeof openPhysicalReportingModal !== 'undefined') window.openPhysicalReportingModal = openPhysicalReportingModal;
 if (typeof openChangeRoom !== 'undefined') window.openChangeRoom = openChangeRoom;
+if (typeof doChangeRoom !== 'undefined') window.doChangeRoom = doChangeRoom;
+if (typeof onCrRoomSelect !== 'undefined') window.onCrRoomSelect = onCrRoomSelect;
 if (typeof doVacate !== 'undefined') window.doVacate = doVacate;
 if (typeof openCollectFromSFD !== 'undefined') window.openCollectFromSFD = openCollectFromSFD;
 if (typeof doEditManualFeeType !== 'undefined') window.doEditManualFeeType = doEditManualFeeType;

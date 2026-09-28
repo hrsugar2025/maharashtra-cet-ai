@@ -3712,6 +3712,11 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
     return val === null || val === undefined ? "" : val.toString().trim();
   };
   try {
+    var rawId = safeString(oldAllotmentId);
+    var rawNoPrefix = rawId.replace(/^ALLOT-/, "").replace(/^ALT-/, "").replace(/^APP-/, "");
+    var targetAppId = rawId.indexOf("APP-") === 0 ? rawId : ("APP-" + rawNoPrefix);
+    var targetAllotId = rawId.indexOf("ALLOT-") === 0 ? rawId : ("ALLOT-" + rawNoPrefix);
+
     var allotSheet = getSheet("ROOM_ALLOTMENTS");
     var allotData  = allotSheet.getDataRange().getValues();
     var oldRow = -1, oldAppId = "", oldStudentName = "", oldRoomId = "", oldRoomNumber = "", oldExpectedDate = "", oldAcadYear = "";
@@ -3719,22 +3724,29 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
 
     for (var i = 0; i < allotData.length; i++) {
       if (!allotData[i][0] || safeString(allotData[i][0]).toUpperCase() === "ALLOTMENT_ID") continue;
-      if (safeString(allotData[i][0]) === safeString(oldAllotmentId)) {
-        oldRow = i + 1;
-        oldAppId        = safeString(allotData[i][1]);
-        oldStudentName  = safeString(allotData[i][2]);
-        oldRoomId       = safeString(allotData[i][3]);
-        oldRoomNumber   = safeString(allotData[i][4]);
-        oldExpectedDate = safeString(allotData[i][7]);
-        oldAcadYear     = safeString(allotData[i][11]);
-        oldPhysicalStatus = safeString(allotData[i][12]) || "Not Reported";
-        oldReportingDate = safeString(allotData[i][13]);
-        oldReportedBy   = safeString(allotData[i][14]);
-        oldReportingRemarks = safeString(allotData[i][15]);
-        break;
+      var curId = safeString(allotData[i][0]);
+      var curAppId = safeString(allotData[i][1]);
+      var curNoPrefix = curId.replace(/^ALLOT-/, "").replace(/^ALT-/, "").replace(/^APP-/, "");
+      var curAppNoPrefix = curAppId.replace(/^ALLOT-/, "").replace(/^ALT-/, "").replace(/^APP-/, "");
+
+      if (curId === rawId || curAppId === rawId || curAppId === targetAppId || curId === targetAllotId || curNoPrefix === rawNoPrefix || curAppNoPrefix === rawNoPrefix) {
+        if (safeString(allotData[i][9]) === "Active" || oldRow < 0) {
+          oldRow = i + 1;
+          oldAppId        = curAppId || targetAppId;
+          oldStudentName  = safeString(allotData[i][2]);
+          oldRoomId       = safeString(allotData[i][3]);
+          oldRoomNumber   = safeString(allotData[i][4]);
+          oldExpectedDate = safeString(allotData[i][7]);
+          oldAcadYear     = safeString(allotData[i][11]);
+          oldPhysicalStatus = safeString(allotData[i][12]) || "Not Reported";
+          oldReportingDate = safeString(allotData[i][13]);
+          oldReportedBy   = safeString(allotData[i][14]);
+          oldReportingRemarks = safeString(allotData[i][15]);
+          if (safeString(allotData[i][9]) === "Active") break;
+        }
       }
     }
-    if (oldRow < 0) return { success: false, message: "Allotment not found." };
+    if (oldRow < 0) return { success: false, message: "Allotment record not found for ID: " + oldAllotmentId };
 
     var currentAcadYear = oldAcadYear || getActiveAcademicYear();
 
@@ -3747,7 +3759,7 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
     var roomsData  = roomsSheet.getDataRange().getValues();
     for (var j = 0; j < roomsData.length; j++) {
       if (!roomsData[j][0] || safeString(roomsData[j][0]).toUpperCase() === "ROOM_ID") continue;
-      if (safeString(roomsData[j][0]) === oldRoomId) {
+      if (safeString(roomsData[j][0]) === oldRoomId || safeString(roomsData[j][1]) === oldRoomNumber) {
         var occ = parseInt(roomsData[j][5]) || 0;
         roomsSheet.getRange(j + 1, 6).setValue(Math.max(0, occ - 1));
         break;
@@ -3760,14 +3772,14 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
       newAllotId,
       oldAppId,
       oldStudentName,
-      newRoomId,
+      newRoomId || newRoomNumber,
       newRoomNumber,
       newRoomType,
       todayFormatted(),
-      oldExpectedDate,
+      oldExpectedDate || "31-May-2027",
       "",
       "Active",
-      changedBy,
+      changedBy || "Admin",
       currentAcadYear,
       oldPhysicalStatus,
       oldReportingDate,
@@ -3778,34 +3790,54 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
     // Increase new room occupied count
     for (var k = 0; k < roomsData.length; k++) {
       if (!roomsData[k][0] || safeString(roomsData[k][0]).toUpperCase() === "ROOM_ID") continue;
-      if (safeString(roomsData[k][0]) === safeString(newRoomId)) {
+      if (safeString(roomsData[k][0]) === safeString(newRoomId) || safeString(roomsData[k][1]) === safeString(newRoomNumber)) {
         var occ2 = parseInt(roomsData[k][5]) || 0;
         roomsSheet.getRange(k + 1, 6).setValue(occ2 + 1);
         break;
       }
     }
 
+    // Update room info in STUDENT_APPLICATIONS sheet if present
+    try {
+      var appSheet = getSheet("STUDENT_APPLICATIONS");
+      if (appSheet) {
+        var appData = appSheet.getDataRange().getValues();
+        for (var m = 0; m < appData.length; m++) {
+          if (!appData[m][0] || safeString(appData[m][0]).toUpperCase() === "APP_ID") continue;
+          var curAId = safeString(appData[m][0]);
+          if (curAId === oldAppId || curAId === targetAppId || curAId.replace(/^APP-/,"") === rawNoPrefix) {
+            appSheet.getRange(m + 1, 7).setValue(newRoomNumber);
+            if (appData[m].length >= 8) appSheet.getRange(m + 1, 8).setValue(newRoomType);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Notice updating STUDENT_APPLICATIONS:", e);
+    }
+
     SpreadsheetApp.flush();
 
     // --- Transfer fee logic ---
-    // Cancel all old ledger entries for the student
     var ledgerSheet = getSheet("STUDENT_FEE_LEDGER");
-    var ledgerRange = ledgerSheet.getDataRange();
-    var ledgerData  = ledgerRange.getValues();
-    for (var l = 0; l < ledgerData.length; l++) {
-      var row = ledgerData[l];
-      if (!row[0] || safeString(row[0]).toUpperCase() === "LEDGER_ID") continue;
-      if (safeString(row[1]) === oldAppId && 
-          safeString(row[3]) !== newRoomNumber && 
-          safeString(row[12]) !== "Cancelled") {
-        var rowNum = l + 1;
-        ledgerSheet.getRange(rowNum, 9).setValue(0);
-        ledgerSheet.getRange(rowNum, 10).setValue(0);
-        ledgerSheet.getRange(rowNum, 11).setValue(0);
-        ledgerSheet.getRange(rowNum, 13).setValue("Cancelled");
+    if (ledgerSheet) {
+      var ledgerRange = ledgerSheet.getDataRange();
+      var ledgerData  = ledgerRange.getValues();
+      for (var l = 0; l < ledgerData.length; l++) {
+        var row = ledgerData[l];
+        if (!row[0] || safeString(row[0]).toUpperCase() === "LEDGER_ID") continue;
+        if (safeString(row[1]) === oldAppId && 
+            safeString(row[3]) !== newRoomNumber && 
+            safeString(row[12]) !== "Cancelled") {
+          var rowNum = l + 1;
+          ledgerSheet.getRange(rowNum, 9).setValue(0);
+          ledgerSheet.getRange(rowNum, 10).setValue(0);
+          ledgerSheet.getRange(rowNum, 11).setValue(0);
+          ledgerSheet.getRange(rowNum, 13).setValue("Cancelled");
+        }
       }
+      SpreadsheetApp.flush();
     }
-    SpreadsheetApp.flush();
 
     // Optionally apply new fee structure
     var feeResult = { success: true, entriesCreated: 0 };
@@ -3814,7 +3846,6 @@ function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomTy
       
       if (feeResult.success && feeResult.entriesCreated > 0) {
         SpreadsheetApp.flush();
-        // Reallocate student payments to the new room structure
         reallocateStudentPayments(oldAppId, newRoomNumber);
       }
     }
