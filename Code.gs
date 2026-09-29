@@ -8856,9 +8856,9 @@ function syncAllDataToSupabase() {
           remarks: (fr[10] || "").toString().trim(),
           collected_by: (fr[11] || "Admin").toString().trim(),
           status: (fr[12] || "Active").toString().trim(),
-          recon_status: (fr[13] || "Unreconciled").toString().trim(),
-          recon_bank: (fr[14] || "").toString().trim() || null,
-          recon_ref_no: (fr[16] || "").toString().trim() || null,
+          recon_status: ((fr[8] || "").toString().trim().toLowerCase() === "cash" ? "Cash" : "Unreconciled"),
+          recon_bank: null,
+          recon_ref_no: null,
           academic_year: (fr[17] || "2026-27").toString().trim()
         });
       }

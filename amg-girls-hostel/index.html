@@ -1213,12 +1213,18 @@ function findMatchingFeeStructure(roomType, studentCollege, structures) {
     return (s.status || 'Active') === 'Active';
   });
 
-  // 1. Exact college match on matching room type
+  // 1. Exact college match: check if normStudentCol is in the structure's list of colleges
   if (normStudentCol) {
     var colMatch = activeStructures.find(function(s) {
       var sType = (s.roomType || s.room_type || '').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
-      var sCol = normalizeCollegeNameKey(s.collegeName || s.college_name);
-      return (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1) && (sCol === normStudentCol);
+      var isTypeMatch = (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1);
+      if (!isTypeMatch) return false;
+
+      var rawCol = s.collegeName || s.college_name;
+      var cols = Array.isArray(rawCol) ? rawCol : (typeof rawCol === 'string' ? rawCol.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+      return cols.some(function(c) {
+        return normalizeCollegeNameKey(c) === normStudentCol;
+      });
     });
     if (colMatch) return colMatch;
   }
@@ -1226,9 +1232,15 @@ function findMatchingFeeStructure(roomType, studentCollege, structures) {
   // 2. Fallback to default "All Colleges" / general structure for this room type
   var defaultMatch = activeStructures.find(function(s) {
     var sType = (s.roomType || s.room_type || '').toString().trim().toLowerCase().replace(/tripple/g, 'triple');
-    var sCol = (s.collegeName || s.college_name || 'All Colleges').toString().trim().toLowerCase();
-    var isDefault = !sCol || sCol === 'all colleges' || sCol === 'all' || sCol === 'general' || sCol === 'default';
-    return (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1) && isDefault;
+    var isTypeMatch = (sType === targetType || sType.indexOf(targetType) !== -1 || targetType.indexOf(sType) !== -1);
+    if (!isTypeMatch) return false;
+
+    var rawCol = s.collegeName || s.college_name;
+    var cols = Array.isArray(rawCol) ? rawCol : (typeof rawCol === 'string' ? rawCol.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+    return cols.some(function(c) {
+      var cl = (c || '').toLowerCase();
+      return !cl || cl === 'all colleges' || cl === 'all' || cl === 'general' || cl === 'default';
+    });
   });
   if (defaultMatch) return defaultMatch;
 
@@ -1599,26 +1611,33 @@ if (typeof window.google.script.run === 'undefined') {
                 <div class="card-sub">Define general (All Colleges) or college-specific fee structures (e.g. for BAMS, BHMS, AMGOI)</div>
               </div>
             </div>
-            <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
-              <div class="form-group"><label class="form-label">Structure Name *</label><input type="text" id="fs-name" class="form-input" placeholder="e.g. 2026-27 Classic Triple - BAMS"/></div>
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap:16px;">
+              <div class="form-group"><label class="form-label">Structure Name *</label><input type="text" id="fs-name" class="form-input" placeholder="e.g. 2026-27 Classic Triple - BAMS & BHMS"/></div>
               <div class="form-group"><label class="form-label">Room Type *</label><select id="fs-room-type" class="form-select"><option value="">-- Select Room Type --</option></select></div>
-              <div class="form-group">
-                <label class="form-label">College Applicability *</label>
-                <select id="fs-college" class="form-select">
-                  <option value="All Colleges">-- All Colleges (Default / General) --</option>
-                  <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
-                  <option value="AMGOI">AMGOI</option>
-                  <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
-                  <option value="ADCET">ADCET</option>
-                  <option value="AMCP">AMCP (Pharmacy)</option>
-                  <option value="AMSON (GNM)">AMSON (GNM)</option>
-                  <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
-                  <option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option>
-                  <option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option>
-                  <option value="AMCON (B. SC. NURSING))">AMCON (B. SC. NURSING)</option>
-                  <option value="MVMIN (GNM)">MVMIN (GNM)</option>
-                  <option value="Other College">Other College</option>
-                </select>
+              
+              <div class="form-group span-2" style="margin-bottom:0;">
+                <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">
+                  <span>College Applicability (Check all applicable colleges) *</span>
+                  <span style="font-size:0.75rem;font-weight:normal;color:var(--primary);cursor:pointer;" onclick="toggleAllCollegesCheckbox('fs-col-')">Select All / Clear</span>
+                </label>
+                <div class="college-checkbox-grid" style="max-height:150px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px;">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;font-weight:700;grid-column:1/-1;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:2px;color:var(--primary);">
+                    <input type="checkbox" id="fs-col-all" value="All Colleges" checked onchange="onAllCollegesToggle('fs-col-')"/>
+                    <span>-- All Colleges (Default / General) --</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMAMCHRC (BAMS)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMAMCHRC (BAMS)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMGOI" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMGOI</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMHMCH (BHMS)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMHMCH (BHMS)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="ADCET" onchange="onSpecificCollegeToggle('fs-col-')"/><span>ADCET</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMCP" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMCP</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMSON (GNM)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMSON (GNM)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMPV (DIPLOMA)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMPV (DIPLOMA)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMIP AMBAP (PHARMACY)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMIP AMBAP (PHARMACY)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="WCOP (PHARMACY)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>WCOP (PHARMACY)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMCON (B. SC. NURSING)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMCON (B. SC. NURSING)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="MVMIN (GNM)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>MVMIN (GNM)</span></label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="Other College" onchange="onSpecificCollegeToggle('fs-col-')"/><span>Other College</span></label>
+                </div>
               </div>
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
@@ -3856,23 +3875,29 @@ if (typeof window.google.script.run === 'undefined') {
           <label class="form-label">Room Type *</label>
           <select id="edit-fs-room-type" class="form-select"></select>
         </div>
-        <div class="form-group">
-          <label class="form-label">College Applicability *</label>
-          <select id="edit-fs-college" class="form-select">
-            <option value="All Colleges">-- All Colleges (Default / General) --</option>
-            <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
-            <option value="AMGOI">AMGOI</option>
-            <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
-            <option value="ADCET">ADCET</option>
-            <option value="AMCP">AMCP (Pharmacy)</option>
-            <option value="AMSON (GNM)">AMSON (GNM)</option>
-            <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
-            <option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option>
-            <option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option>
-            <option value="AMCON (B. SC. NURSING))">AMCON (B. SC. NURSING)</option>
-            <option value="MVMIN (GNM)">MVMIN (GNM)</option>
-            <option value="Other College">Other College</option>
-          </select>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>College Applicability (Check all applicable colleges) *</span>
+            <span style="font-size:0.75rem;font-weight:normal;color:var(--primary);cursor:pointer;" onclick="toggleAllCollegesCheckbox('edit-fs-col-')">Select All / Clear</span>
+          </label>
+          <div class="college-checkbox-grid" style="max-height:160px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;font-weight:700;grid-column:1/-1;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:2px;color:var(--primary);">
+              <input type="checkbox" id="edit-fs-col-all" value="All Colleges" onchange="onAllCollegesToggle('edit-fs-col-')"/>
+              <span>-- All Colleges (Default / General) --</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMAMCHRC (BAMS)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMAMCHRC (BAMS)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMGOI" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMGOI</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMHMCH (BHMS)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMHMCH (BHMS)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="ADCET" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>ADCET</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMCP" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMCP</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMSON (GNM)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMSON (GNM)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMPV (DIPLOMA)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMPV (DIPLOMA)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMIP AMBAP (PHARMACY)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMIP AMBAP (PHARMACY)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="WCOP (PHARMACY)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>WCOP (PHARMACY)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMCON (B. SC. NURSING)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMCON (B. SC. NURSING)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="MVMIN (GNM)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>MVMIN (GNM)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="Other College" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>Other College</span></label>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Status *</label>
@@ -5779,12 +5804,17 @@ window.google = {
           },
 
           reconcileAllFeeReceipts: function(targetAppId) {
-            var q = _supabase.from('fee_receipts').update({ recon_status: 'Reconciled' }).neq('payment_mode', 'Cash');
-            if (targetAppId) q = q.eq('app_id', targetAppId);
-            q.then(function(res) {
-              if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'All matching receipts reconciled.' });
-            }).catch(failureCb);
+            if (targetAppId) {
+              methods.recalculateStudentFeeLedger(targetAppId, function(res) {
+                if (res && res.success) successCb({ success: true, message: 'Receipts settled and ledger updated for student ' + targetAppId + '.' });
+                else failureCb(new Error((res && res.message) || 'Failed to settle student receipts'));
+              });
+            } else {
+              methods.recalculateAllStudentFeeLedgers(function(res) {
+                if (res && res.success) successCb({ success: true, message: 'All student receipts settled against fee ledger dues.' });
+                else failureCb(new Error((res && res.message) || 'Failed to settle all receipts'));
+              });
+            }
           },
 
           // ── STUDENT DASHBOARD FOR STUDENT PORTAL ────────────────
@@ -6169,7 +6199,11 @@ window.google = {
                   remarks: f.remarks || '',
                   collectedBy: f.collected_by || 'Admin',
                   status: f.status || 'Active',
-                  reconStatus: f.recon_status || 'Cash'
+                  reconStatus: f.recon_status || ((f.payment_mode || '').toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'),
+                  reconBank: f.recon_bank || '',
+                  reconCreditDate: formatDateValue(f.recon_credit_date),
+                  reconRefNo: f.recon_ref_no || '',
+                  reconRemarks: f.recon_remarks || ''
                 };
               });
               successCb({ success: true, data: list });
@@ -6213,7 +6247,11 @@ window.google = {
                   remarks: f.remarks || '',
                   collectedBy: f.collected_by || 'Admin',
                   status: f.status || 'Active',
-                  reconStatus: f.recon_status || 'Cash'
+                  reconStatus: f.recon_status || ((f.payment_mode || '').toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'),
+                  reconBank: f.recon_bank || '',
+                  reconCreditDate: formatDateValue(f.recon_credit_date),
+                  reconRefNo: f.recon_ref_no || '',
+                  reconRemarks: f.recon_remarks || ''
                 };
               });
 
@@ -6371,7 +6409,7 @@ window.google = {
 
                 var items = rawData.map(function(f, i) {
                   var amount = parseFloat(f.amount_paid) || parseFloat(f.amount) || parseFloat(f.fee_month) || parseFloat(f.paid_amount) || 0;
-                  var rStatus = f.recon_status || 'Unreconciled';
+                  var rStatus = f.recon_status || ((f.payment_mode || '').toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled');
                   var rBank = f.recon_bank || '';
                   var isRec = (rStatus || '').toLowerCase() === 'reconciled';
 
@@ -6463,12 +6501,9 @@ window.google = {
             }).catch(failureCb);
           },
 
-          saveFeeStructure: function(structData) {
-            var rand = Math.floor(1000 + Math.random() * 9000);
-            var fsId = 'FS-' + (structData.academicYear || '2026-27').substring(0,4) + '-' + rand;
+                    saveFeeStructure: function(structData) {
             var colName = structData.collegeName || structData.college_name || 'All Colleges';
             var row = {
-              structure_id: fsId,
               structure_name: structData.structureName,
               room_type: structData.roomType,
               academic_year: structData.academicYear || '2026-27',
@@ -6479,15 +6514,14 @@ window.google = {
               if (res.error) failureCb(res.error);
               else {
                 var insertedRow = (res.data && res.data[0]) || {};
-                var actualId = insertedRow.id || fsId;
+                var actualId = insertedRow.id;
                 _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
                   var colMap = {};
                   var sRow = sRes.data && sRes.data[0];
                   if (sRow && sRow.value) {
                     try { colMap = JSON.parse(sRow.value); } catch(e){}
                   }
-                  colMap[actualId] = colName;
-                  colMap[fsId] = colName;
+                  if (actualId) colMap[actualId] = colName;
                   _supabase.from('hostel_settings').upsert([{
                     key: 'FEE_STRUCTURE_COLLEGES',
                     value: JSON.stringify(colMap)
@@ -6503,13 +6537,17 @@ window.google = {
 
           updateFeeStructure: function(structData) {
             var sId = structData.structureId || structData.id;
+            var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+            var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+            var actualId = (sId === 'FS-2026-6005' ? classicUuid : (sId === 'FS-2026-3951' ? premiumUuid : sId));
+
             var colName = structData.collegeName || structData.college_name || 'All Colleges';
             var updateFields = {
               structure_name: structData.structureName,
               room_type: structData.roomType,
               status: structData.status || 'Active'
             };
-            _supabase.from('fee_structures').update(updateFields).or('id.eq.' + sId + ',structure_id.eq.' + sId).then(function(res) {
+            _supabase.from('fee_structures').update(updateFields).eq('id', actualId).then(function(res) {
               if (res.error) failureCb(res.error);
               else {
                 _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
@@ -6518,7 +6556,8 @@ window.google = {
                   if (sRow && sRow.value) {
                     try { colMap = JSON.parse(sRow.value); } catch(e){}
                   }
-                  colMap[sId] = colName;
+                  colMap[actualId] = colName;
+                  if (sId !== actualId) colMap[sId] = colName;
                   _supabase.from('hostel_settings').upsert([{
                     key: 'FEE_STRUCTURE_COLLEGES',
                     value: JSON.stringify(colMap)
@@ -6533,23 +6572,32 @@ window.google = {
           },
 
           updateFeeStructureStatus: function(structureId, newStatus) {
-            _supabase.from('fee_structures').update({ status: newStatus }).or('structure_id.eq.' + structureId + ',id.eq.' + structureId).then(function(res) {
+            var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+            var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+            var actualId = (structureId === 'FS-2026-6005' ? classicUuid : (structureId === 'FS-2026-3951' ? premiumUuid : structureId));
+
+            _supabase.from('fee_structures').update({ status: newStatus }).eq('id', actualId).then(function(res) {
               if (res.error) failureCb(res.error);
               else successCb({ success: true, message: 'Status updated to ' + newStatus });
             }).catch(failureCb);
           },
 
           deleteFeeStructure: function(structureId) {
-            _supabase.from('fee_structures').delete().or('structure_id.eq.' + structureId + ',id.eq.' + structureId).then(function(res) {
+            var classicUuid = 'e1448452-6996-4cc3-875d-5a91203a5456';
+            var premiumUuid = '9cd4d9f0-38b2-426c-8e52-2732d887cba6';
+            var actualId = (structureId === 'FS-2026-6005' ? classicUuid : (structureId === 'FS-2026-3951' ? premiumUuid : structureId));
+
+            _supabase.from('fee_structures').delete().eq('id', actualId).then(function(res) {
               if (res.error) failureCb(res.error);
               else {
-                _supabase.from('fee_heads').delete().or('structure_id.eq.' + structureId).then(function() {
+                _supabase.from('fee_heads').delete().eq('structure_id', actualId).then(function() {
                   _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES').then(function(sRes) {
                     var colMap = {};
                     var sRow = sRes.data && sRes.data[0];
                     if (sRow && sRow.value) {
                       try { colMap = JSON.parse(sRow.value); } catch(e){}
                     }
+                    delete colMap[actualId];
                     delete colMap[structureId];
                     _supabase.from('hostel_settings').upsert([{
                       key: 'FEE_STRUCTURE_COLLEGES',
@@ -10801,6 +10849,65 @@ function loadFeeStructures(){
   }).getFeeStructures();
 }
 
+// ── CHECKBOX HELPER FUNCTIONS FOR COLLEGE SELECTION ───────────
+function onAllCollegesToggle(prefix) {
+  var allCb = document.getElementById(prefix + 'all');
+  if (allCb && allCb.checked) {
+    var cbs = document.querySelectorAll('.' + prefix + 'cb');
+    cbs.forEach(function(cb) { cb.checked = false; });
+  }
+}
+
+function onSpecificCollegeToggle(prefix) {
+  var cbs = document.querySelectorAll('.' + prefix + 'cb:checked');
+  var allCb = document.getElementById(prefix + 'all');
+  if (cbs.length > 0) {
+    if (allCb) allCb.checked = false;
+  } else {
+    if (allCb) allCb.checked = true;
+  }
+}
+
+function toggleAllCollegesCheckbox(prefix) {
+  var allCb = document.getElementById(prefix + 'all');
+  var cbs = document.querySelectorAll('.' + prefix + 'cb');
+  if (allCb && allCb.checked) {
+    allCb.checked = false;
+    cbs.forEach(function(cb) { cb.checked = true; });
+  } else {
+    if (allCb) allCb.checked = true;
+    cbs.forEach(function(cb) { cb.checked = false; });
+  }
+}
+
+function getSelectedColleges(prefix) {
+  var allCb = document.getElementById(prefix + 'all');
+  if (allCb && allCb.checked) return ['All Colleges'];
+  var checked = [];
+  var cbs = document.querySelectorAll('.' + prefix + 'cb:checked');
+  cbs.forEach(function(cb) { checked.push(cb.value); });
+  if (checked.length === 0) return ['All Colleges'];
+  return checked;
+}
+
+function setSelectedColleges(prefix, collegeVal) {
+  var allCb = document.getElementById(prefix + 'all');
+  var cbs = document.querySelectorAll('.' + prefix + 'cb');
+  cbs.forEach(function(cb) { cb.checked = false; });
+
+  var arr = Array.isArray(collegeVal) ? collegeVal : (typeof collegeVal === 'string' ? collegeVal.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+  var isAll = arr.length === 0 || arr.some(function(c){ return !c || c.toLowerCase().indexOf('all') !== -1; });
+
+  if (isAll) {
+    if (allCb) allCb.checked = true;
+  } else {
+    if (allCb) allCb.checked = false;
+    cbs.forEach(function(cb) {
+      if (arr.indexOf(cb.value) !== -1) cb.checked = true;
+    });
+  }
+}
+
 function renderFeeStructuresTable() {
   var tbody = document.getElementById('fs-tbody');
   if (!tbody) return;
@@ -10813,17 +10920,25 @@ function renderFeeStructuresTable() {
     var rawId = fs.id || sId;
     var sName = fs.structureName || fs.structure_name || '';
     var rType = fs.roomType || fs.room_type || '';
-    var colName = fs.collegeName || 'All Colleges';
+    var rawCol = fs.collegeName || 'All Colleges';
+    var colList = Array.isArray(rawCol) ? rawCol : (typeof rawCol === 'string' ? rawCol.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+    var isAll = colList.length === 0 || colList.some(function(c){ return !c || c.toLowerCase().indexOf('all') !== -1; });
+
+    var colBadge = '';
+    if (isAll) {
+      colBadge = '<span class="badge" style="background:rgba(100,116,139,0.12);color:#475569;font-weight:600;"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">public</span> All Colleges (Default)</span>';
+    } else {
+      colBadge = '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + colList.map(function(c) {
+        return '<span class="badge badge-active" style="background:rgba(99,102,241,0.12);color:#4338ca;font-weight:700;"><span class="material-icons-round" style="font-size:11px;vertical-align:middle;margin-right:2px;">school</span>' + c + '</span>';
+      }).join('') + '</div>';
+    }
+
     var totalFee = parseFloat(fs.totalPrescribedFee) || 0;
     var st = fs.status || 'Active';
     var cr = fs.createdDate || fs.created_at || '26/07/2026';
     if (cr && typeof cr === 'string' && cr.indexOf('T') !== -1) {
       try { cr = new Date(cr).toLocaleDateString('en-GB'); } catch(e){}
     }
-
-    var colBadge = colName === 'All Colleges' || !colName
-      ? '<span class="badge" style="background:rgba(100,116,139,0.12);color:#475569;font-weight:600;"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">public</span> All Colleges (Default)</span>'
-      : '<span class="badge badge-active" style="background:rgba(99,102,241,0.12);color:#4338ca;font-weight:700;"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">school</span> ' + colName + '</span>';
 
     return '<tr>'
       + '<td style="font-family:monospace;font-size:0.78rem;color:var(--primary-light);">' + sId + '</td>'
@@ -10851,52 +10966,6 @@ function renderFeeStructuresTable() {
   }).join('');
 }
 
-function manageFeeStructureHeads(structureId) {
-  var tabs = document.querySelectorAll('#fee-setup-tabs .tab');
-  if (tabs && tabs[2]) showFeeSetupTab('heads', tabs[2]);
-  var sel = document.getElementById('fh-structure');
-  if (sel) {
-    sel.value = structureId;
-    onFHStructureChange();
-  }
-}
-
-function toggleFeeStructureStatus(structureId, currentStatus) {
-  var newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-  google.script.run.withSuccessHandler(function(res) {
-    if (res.success) {
-      showToast('Fee structure status updated to ' + newStatus, 'success');
-      loadFeeStructures();
-      loadFeeStructureDropdowns();
-    } else {
-      showToast('Error: ' + res.message, 'error');
-    }
-  }).updateFeeStructureStatus(structureId, newStatus);
-}
-
-function doDeleteFeeStructure(structureId, structureName) {
-  showConfirm({
-    title: 'Delete Fee Structure?',
-    msg: 'Delete "' + structureName + '" (' + structureId + ')?\n\nExisting student ledger entries will not be deleted.',
-    icon: 'delete',
-    iconColor: 'red',
-    okLabel: 'Yes, Delete',
-    okClass: 'btn-danger',
-    hasInput: false,
-    onConfirm: function() {
-      google.script.run.withSuccessHandler(function(res) {
-        if (res.success) {
-          showToast('Fee structure deleted.', 'info');
-          loadFeeStructures();
-          loadFeeStructureDropdowns();
-        } else {
-          showToast('Error: ' + res.message, 'error');
-        }
-      }).deleteFeeStructure(structureId);
-    }
-  });
-}
-
 function openEditFeeStructureModal(structureId) {
   var s = (allFeeStructures || []).find(function(item) {
     return item.structureId === structureId || item.id === structureId;
@@ -10905,7 +10974,6 @@ function openEditFeeStructureModal(structureId) {
   document.getElementById('edit-fs-id').value = s.id || s.structureId;
   document.getElementById('edit-fs-name').value = s.structureName || '';
   
-  // Populate room types
   var rtSel = document.getElementById('edit-fs-room-type');
   if (rtSel) {
     rtSel.innerHTML = (allRoomTypes || []).map(function(r) {
@@ -10913,8 +10981,7 @@ function openEditFeeStructureModal(structureId) {
     }).join('');
   }
 
-  var colSel = document.getElementById('edit-fs-college');
-  if (colSel) colSel.value = s.collegeName || 'All Colleges';
+  setSelectedColleges('edit-fs-col-', s.collegeName || 'All Colleges');
 
   var stSel = document.getElementById('edit-fs-status');
   if (stSel) stSel.value = s.status || 'Active';
@@ -10926,7 +10993,8 @@ function doSaveFeeStructureEdit() {
   var sId = document.getElementById('edit-fs-id').value;
   var name = document.getElementById('edit-fs-name').value.trim();
   var rt = document.getElementById('edit-fs-room-type').value;
-  var col = document.getElementById('edit-fs-college').value;
+  var selectedCols = getSelectedColleges('edit-fs-col-');
+  var colVal = selectedCols.length === 1 && selectedCols[0] === 'All Colleges' ? 'All Colleges' : selectedCols.join(', ');
   var status = document.getElementById('edit-fs-status').value;
 
   if (!name || !rt) {
@@ -10952,7 +11020,7 @@ function doSaveFeeStructureEdit() {
     structureId: sId,
     structureName: name,
     roomType: rt,
-    collegeName: col,
+    collegeName: colVal,
     status: status
   });
 }
@@ -10964,7 +11032,10 @@ function loadFeeStructureDropdowns(){
     var sel = document.getElementById('fh-structure');
     if (!sel) return;
     sel.innerHTML = '<option value="">-- Select Structure --</option>' + (res.data || []).map(function(s){
-      var colTag = s.collegeName && s.collegeName !== 'All Colleges' ? ' | ' + s.collegeName : ' | All Colleges';
+      var rawCol = s.collegeName || 'All Colleges';
+      var colList = Array.isArray(rawCol) ? rawCol : (typeof rawCol === 'string' ? rawCol.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+      var isAll = colList.length === 0 || colList.some(function(c){ return !c || c.toLowerCase().indexOf('all') !== -1; });
+      var colTag = isAll ? ' | All Colleges' : ' | ' + colList.join(', ');
       return '<option value="' + (s.id || s.structureId) + '">' + s.structureName + ' (' + s.roomType + colTag + ') – ' + s.status + '</option>';
     }).join('');
   }).getFeeStructures();
@@ -10973,25 +11044,20 @@ function loadFeeStructureDropdowns(){
 async function doSaveFeeStructure() {
   var name = document.getElementById('fs-name').value.trim();
   var rt = document.getElementById('fs-room-type').value;
-  var col = document.getElementById('fs-college') ? document.getElementById('fs-college').value : 'All Colleges';
+  var selectedCols = getSelectedColleges('fs-col-');
+  var colVal = selectedCols.length === 1 && selectedCols[0] === 'All Colleges' ? 'All Colleges' : selectedCols.join(', ');
+
   if (!name || !rt) {
     showToast('Please fill all fields.', 'error');
-    return;
-  }
-  var clash = (allFeeStructures || []).filter(function(s) {
-    var sCol = s.collegeName || 'All Colleges';
-    return s.roomType === rt && sCol === col && s.status === 'Active';
-  });
-  if (clash.length > 0) {
-    showToast('An active fee structure already exists for "' + rt + '" & college "' + col + '". Please deactivate it first.', 'warning');
     return;
   }
 
   google.script.run.withSuccessHandler(function(res) {
     if (res.success) {
-      showToast('Fee structure created for ' + col + '!', 'success');
+      showToast('Fee structure created for ' + colVal + '!', 'success');
       document.getElementById('fs-name').value = '';
       document.getElementById('fs-room-type').value = '';
+      setSelectedColleges('fs-col-', 'All Colleges');
       loadFeeStructures();
       loadFeeStructureDropdowns();
     } else {
@@ -11002,7 +11068,7 @@ async function doSaveFeeStructure() {
   }).saveFeeStructure({
     structureName: name,
     roomType: rt,
-    collegeName: col,
+    collegeName: colVal,
     academicYear: '2026-27'
   });
 }
@@ -11076,7 +11142,10 @@ function onFHStructureChange() {
   }
   var struct = (allFeeStructures || []).find(function(s){ return s.structureId === sid || s.id === sid; });
   if (subtitle && struct) {
-    var colTag = struct.collegeName && struct.collegeName !== 'All Colleges' ? ' | ' + struct.collegeName : '';
+    var rawCol = struct.collegeName || 'All Colleges';
+    var colList = Array.isArray(rawCol) ? rawCol : (typeof rawCol === 'string' ? rawCol.split(',').map(function(c){ return c.trim(); }) : ['All Colleges']);
+    var isAll = colList.length === 0 || colList.some(function(c){ return !c || c.toLowerCase().indexOf('all') !== -1; });
+    var colTag = isAll ? '' : ' | ' + colList.join(', ');
     subtitle.textContent = 'Fee heads for ' + struct.structureName + ' (' + struct.roomType + colTag + ')';
   }
   loadFeeHeads(sid);
@@ -17845,6 +17914,9 @@ window.showToast = showToast;
 if (typeof openBankReconModal !== 'undefined') window.openBankReconModal = openBankReconModal;
 if (typeof openEditReceipt !== 'undefined') window.openEditReceipt = openEditReceipt;
 if (typeof doCancelReceipt !== 'undefined') window.doCancelReceipt = doCancelReceipt;
+if (typeof onAllCollegesToggle !== 'undefined') window.onAllCollegesToggle = onAllCollegesToggle;
+if (typeof onSpecificCollegeToggle !== 'undefined') window.onSpecificCollegeToggle = onSpecificCollegeToggle;
+if (typeof toggleAllCollegesCheckbox !== 'undefined') window.toggleAllCollegesCheckbox = toggleAllCollegesCheckbox;
 if (typeof openEditFeeStructureModal !== 'undefined') window.openEditFeeStructureModal = openEditFeeStructureModal;
 if (typeof doSaveFeeStructureEdit !== 'undefined') window.doSaveFeeStructureEdit = doSaveFeeStructureEdit;
 if (typeof openRecalculateCollegeFeesModal !== 'undefined') window.openRecalculateCollegeFeesModal = openRecalculateCollegeFeesModal;

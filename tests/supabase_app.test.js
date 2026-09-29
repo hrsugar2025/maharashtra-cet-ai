@@ -738,3 +738,54 @@ test('15. Room Transfer / Change Room (e.g. ALLOT-2026-4001)', async () => {
   assert.equal(student.room_type, 'Premium Tripple');
 });
 
+test('16. Non-Cash Receipts Default to Unreconciled & Bank Reconciliation Report Summary', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  // Insert 1 Cash receipt, 2 Non-cash receipts (without recon_status or explicit Unreconciled)
+  await supabase.from('fee_receipts').insert([
+    {
+      receipt_id: 'RCPT-2026-001',
+      student_name: 'Aditi Sharma',
+      amount_paid: 5000,
+      payment_mode: 'Cash',
+      recon_status: 'Cash',
+      status: 'Active',
+      academic_year: '2026-27'
+    },
+    {
+      receipt_id: 'RCPT-2026-002',
+      student_name: 'Pooja Patil',
+      amount_paid: 12000,
+      payment_mode: 'QR Code',
+      recon_status: 'Unreconciled',
+      status: 'Active',
+      academic_year: '2026-27'
+    },
+    {
+      receipt_id: 'RCPT-2026-003',
+      student_name: 'Snehal Jagtap',
+      amount_paid: 18000,
+      payment_mode: 'Online/UPI',
+      recon_status: null, // should default to Unreconciled for non-cash
+      status: 'Active',
+      academic_year: '2026-27'
+    }
+  ]);
+
+  const report = await engine.getBankReconciliationReport('2026-27');
+  assert.equal(report.success, true);
+  // Total non-cash count should be 2 (Cash excluded)
+  assert.equal(report.data.summary.totalNonCashCount, 2);
+  assert.equal(report.data.summary.totalNonCashAmount, 30000);
+  assert.equal(report.data.summary.totalReconciledCount, 0);
+  assert.equal(report.data.summary.totalReconciledAmount, 0);
+  assert.equal(report.data.summary.totalUnreconciledCount, 2);
+  assert.equal(report.data.summary.totalUnreconciledAmount, 30000);
+
+  // Verify non-cash items have reconStatus as 'Unreconciled'
+  const r2 = report.data.items.find(it => it.receiptId === 'RCPT-2026-002');
+  assert.equal(r2.reconStatus, 'Unreconciled');
+  const r3 = report.data.items.find(it => it.receiptId === 'RCPT-2026-003');
+  assert.equal(r3.reconStatus, 'Unreconciled');
+});
