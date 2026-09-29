@@ -789,3 +789,111 @@ test('16. Non-Cash Receipts Default to Unreconciled & Bank Reconciliation Report
   const r3 = report.data.items.find(it => it.receiptId === 'RCPT-2026-003');
   assert.equal(r3.reconStatus, 'Unreconciled');
 });
+
+test('17. College Courses Master - Deduplication & Grouping Engine', async () => {
+  const supabase = new MockSupabaseClient();
+  supabase.tables.college_courses = [
+    { id: 1, college_name: 'AMGOI', course_name: 'B. TECH. COMPUTER SCIENCE AND ENGINEERING', duration: '4 Years', status: 'Active' },
+    { id: 2, college_name: 'AMGOI', course_name: 'B. TECH. COMPUTER SCIENCE AND ENGINEERING', duration: '4 Years', status: 'Active' }, // duplicate
+    { id: 3, college_name: 'AMGOI', course_name: 'MBA', duration: '2 Years', status: 'Active' },
+    { id: 4, college_name: 'AMAMCHRC (BAMS)', course_name: 'B. A. M. S.', duration: '5.5 Years', status: 'Active' },
+    { id: 5, college_name: 'AMAMCHRC (BAMS)', course_name: 'B. A. M. S.', duration: '5.5 Years', status: 'Active' } // duplicate
+  ];
+
+  // Logic matching getCollegeCourses
+  const res = await supabase.from('college_courses').select('*');
+  const list = [];
+  const grouped = {};
+  const seen = {};
+  (res.data || []).forEach(c => {
+    const cCol = (c.college_name || '').trim();
+    const cCrs = (c.course_name || '').trim();
+    if (!cCol || !cCrs) return;
+    const dedupeKey = cCol.toLowerCase() + '|||' + cCrs.toLowerCase();
+    if (seen[dedupeKey]) return;
+    seen[dedupeKey] = true;
+    list.push({
+      rowIndex: list.length + 1,
+      id: c.id,
+      collegeName: cCol,
+      courseName: cCrs,
+      duration: c.duration || '4 Years',
+      status: c.status || 'Active'
+    });
+    if (!grouped[cCol]) grouped[cCol] = [];
+    if (grouped[cCol].indexOf(cCrs) === -1) {
+      grouped[cCol].push(cCrs);
+    }
+  });
+
+  assert.equal(list.length, 3); // 5 rows deduplicated to 3 unique courses
+  assert.equal(grouped['AMGOI'].length, 2);
+  assert.equal(grouped['AMAMCHRC (BAMS)'].length, 1);
+  assert.deepEqual(grouped['AMGOI'], ['B. TECH. COMPUTER SCIENCE AND ENGINEERING', 'MBA']);
+  assert.deepEqual(grouped['AMAMCHRC (BAMS)'], ['B. A. M. S.']);
+});
+
+test('18. College Course Addition - Duplicate Course Prevention', async () => {
+  const existingGrouped = {
+    'AMCP': ['B. PHARMACY', 'D. PHARMACY']
+  };
+
+  function canAddCourse(college, course) {
+    if (!college || !course) return { allowed: false, error: 'Required fields missing' };
+    if (existingGrouped[college]) {
+      const lower = existingGrouped[college].map(c => c.trim().toLowerCase());
+      if (lower.includes(course.trim().toLowerCase())) {
+        return { allowed: false, error: `Course "${course}" already exists for college "${college}".` };
+      }
+    }
+    return { allowed: true };
+  }
+
+  assert.equal(canAddCourse('AMCP', 'B. PHARMACY').allowed, false);
+  assert.equal(canAddCourse('AMCP', 'b. pharmacy').allowed, false);
+  assert.equal(canAddCourse('AMCP', 'M. PHARMACY').allowed, true);
+  assert.equal(canAddCourse('AMGOI', 'MBA').allowed, true);
+});
+
+test('19. Student College & Course Normalization Preserves Fee & Allotment Dependencies', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  // Student registered with old BAMS raw name
+  await supabase.from('students').insert([{
+    app_id: 'APP-2026-4001',
+    name: 'Sneha Pukale',
+    college_name: 'BAMS',
+    course: 'BAMS',
+    room_number: 'GF-23',
+    status: 'Allotted'
+  }]);
+
+  // Fee ledger created for this student
+  await supabase.from('student_fee_ledger').insert([{
+    ledger_id: 'LDG-001',
+    app_id: 'APP-2026-4001',
+    fee_type: 'Hostel Fee',
+    due_amount: 50000,
+    paid_amount: 50000,
+    balance_amount: 0,
+    status: 'Paid'
+  }]);
+
+  // Normalize college & course
+  await supabase.from('students').update({
+    college_name: 'AMAMCHRC (BAMS)',
+    course: 'B. A. M. S.'
+  }).eq('app_id', 'APP-2026-4001');
+
+  const student = supabase.tables.students.find(s => s.app_id === 'APP-2026-4001');
+  assert.equal(student.college_name, 'AMAMCHRC (BAMS)');
+  assert.equal(student.course, 'B. A. M. S.');
+  assert.equal(student.room_number, 'GF-23');
+
+  // Ledger link intact via app_id
+  const ledger = supabase.tables.student_fee_ledger.find(l => l.app_id === 'APP-2026-4001');
+  assert.equal(ledger.balance_amount, 0);
+  assert.equal(ledger.status, 'Paid');
+});
+

@@ -1394,7 +1394,7 @@ if (typeof window.google.script.run === 'undefined') {
         </div>
       </div>
       <div class="form-group"><label class="form-label">Year of Study *</label><select id="sf-yearOfStudy" class="form-select"><option value="">Select Year</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option><option>5th Year / Intern</option><option>PG / Masters</option></select></div>
-      <div class="form-group span-2"><label class="form-label">College Name *</label><input type="text" id="sf-collegeName" class="form-input" placeholder="Full name of your college" list="sf-college-datalist"/><datalist id="sf-college-datalist"><option value="AMGOI">AMGOI</option><option value="ADCET">ADCET</option><option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option><option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option><option value="AMSON (GNM)">AMSON (GNM)</option><option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option><option value="Other College">Other College</option></datalist></div>
+      <div class="form-group span-2"><label class="form-label">College Name *</label><input type="text" id="sf-collegeName" class="form-input" placeholder="Full name of your college" list="sf-college-datalist"/><datalist id="sf-college-datalist"><option value="AMGOI">AMGOI</option><option value="AMCP">AMCP</option><option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option><option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option><option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option><option value="AMSON (GNM)">AMSON (GNM)</option><option value="MVMIN (GNM)">MVMIN (GNM)</option><option value="AMCON (B. SC. NURSING)">AMCON (B. SC. NURSING)</option><option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option><option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option><option value="ADCET">ADCET</option><option value="Other College">Other College</option></datalist></div>
     </div>
     <div class="section-title">ID &amp; Emergency</div>
     <div class="form-grid">
@@ -5197,16 +5197,26 @@ window.google = {
               else {
                 var list = [];
                 var grouped = {};
-                (res.data || []).forEach(function(c, i) {
+                var seen = {};
+                (res.data || []).forEach(function(c) {
+                  var cCol = (c.college_name || '').trim();
+                  var cCrs = (c.course_name || '').trim();
+                  if (!cCol || !cCrs) return;
+                  var dedupeKey = cCol.toLowerCase() + '|||' + cCrs.toLowerCase();
+                  if (seen[dedupeKey]) return;
+                  seen[dedupeKey] = true;
                   list.push({
-                    rowIndex: i + 1,
-                    collegeName: c.college_name,
-                    courseName: c.course_name,
-                    duration: c.duration,
-                    status: c.status
+                    rowIndex: list.length + 1,
+                    id: c.id,
+                    collegeName: cCol,
+                    courseName: cCrs,
+                    duration: c.duration || '4 Years',
+                    status: c.status || 'Active'
                   });
-                  if (!grouped[c.college_name]) grouped[c.college_name] = [];
-                  grouped[c.college_name].push(c.course_name);
+                  if (!grouped[cCol]) grouped[cCol] = [];
+                  if (grouped[cCol].indexOf(cCrs) === -1) {
+                    grouped[cCol].push(cCrs);
+                  }
                 });
                 successCb({ success: true, data: { list: list, grouped: grouped } });
               }
@@ -7519,6 +7529,56 @@ window.google = {
                 successCb({ success: true, message: 'Room allotment changed to Room ' + newRoomNumber + '.' });
               }).catch(failureCb);
             });
+          },
+
+          getExistingStudentCoursesSummary: function() {
+            _supabase.from('students').select('college_name, course').then(function(res) {
+              if (res.error) failureCb(res.error);
+              else {
+                var grouped = {};
+                (res.data || []).forEach(function(s) {
+                  var col = (s.college_name || '').trim();
+                  var crs = (s.course || '').trim();
+                  if (!col || !crs) return;
+                  var key = col + '|||' + crs;
+                  if (!grouped[key]) grouped[key] = { collegeName: col, courseName: crs, count: 0 };
+                  grouped[key].count++;
+                });
+                var list = Object.values(grouped);
+                list.sort(function(a, b) {
+                  if (a.collegeName !== b.collegeName) return a.collegeName.localeCompare(b.collegeName);
+                  return a.courseName.localeCompare(b.courseName);
+                });
+                successCb({ success: true, data: list });
+              }
+            }).catch(failureCb);
+          },
+
+          applyCourseRepairs: function(mappings) {
+            if (!Array.isArray(mappings) || mappings.length === 0) {
+              successCb({ success: true, message: 'No repairs to apply.', updatedCount: 0 });
+              return;
+            }
+            var promises = mappings.map(function(m) {
+              return _supabase.from('students').update({ course: m.newCourse }).eq('college_name', m.collegeName).eq('course', m.oldCourse);
+            });
+            Promise.all(promises).then(function() {
+              successCb({ success: true, message: 'Successfully standardized courses in student applications!' });
+            }).catch(failureCb);
+          },
+
+          repairCollegeNamesBamsBhms: function() {
+            Promise.all([
+              _supabase.from('students').update({ college_name: 'AMAMCHRC (BAMS)' }).eq('college_name', 'BAMS'),
+              _supabase.from('students').update({ college_name: 'AMAMCHRC (BAMS)' }).eq('college_name', 'AMAMCHRC'),
+              _supabase.from('students').update({ college_name: 'AMHMCH (BHMS)' }).eq('college_name', 'BHMS'),
+              _supabase.from('students').update({ college_name: 'AMHMCH (BHMS)' }).eq('college_name', 'AMHMCH'),
+              _supabase.from('students').update({ course: 'B. A. M. S.' }).eq('course', 'BAMS'),
+              _supabase.from('students').update({ course: 'B. H. M. S.' }).eq('course', 'BHMS'),
+              _supabase.from('students').update({ course: 'B. TECH. ARTIFICIAL INTELLIGENCE (AI) AND DATA SCIENCE' }).eq('course', 'B. TECH. ARTIFICIAL INTELLIGENCE (AI)  AND DATA SCIENCE')
+            ]).then(function() {
+              successCb({ success: true, message: 'College and course names standardized successfully across student records.' });
+            }).catch(failureCb);
           }
         };
 
@@ -11330,39 +11390,63 @@ function loadPendingFees(token, silent){
 
 var MASTER_COLLEGE_COURSES = {
   'AMGOI': [
-    'B.Tech (Computer Science & Engineering)',
-    'B.Tech (Mechanical Engineering)',
-    'B.Tech (Civil Engineering)',
-    'B.Tech (Electrical Engineering)',
-    'B.Tech (Artificial Intelligence & Data Science)',
-    'B.Tech (Electronics & Telecommunication)',
-    'MBA',
-    'M.Tech'
+    'B. TECH. ARTIFICIAL INTELLIGENCE (AI) AND DATA SCIENCE',
+    'B. TECH. ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING',
+    'B. TECH. CIVIL ENGINEERING',
+    'B. TECH. COMPUTER SCIENCE AND ENGINEERING',
+    'B. TECH. ELECTRICAL ENGINEERING',
+    'B. TECH. ELECTRONICS AND COMPUTER ENGINEERING',
+    'B. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING',
+    'B. TECH. MECHANICAL ENGINEERING',
+    'M. TECH. COMPUTER SCIENCE AND ENGINEERING',
+    'M. TECH. CONSTRUCTION MANAGEMENT',
+    'M. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING',
+    'M. TECH. MECHANICAL ENGINEERING (PRODUCTION)',
+    'M. TECH. MECHANICAL ENGINEERING DESIGN',
+    'MBA'
   ],
-  'ADCET': [
-    'B.Tech (Computer Science & Engineering)',
-    'B.Tech (Mechanical Engineering)',
-    'B.Tech (Civil Engineering)',
-    'B.Tech (Electrical Engineering)',
-    'B.Tech (Aeronautical Engineering)',
-    'B.Tech (Artificial Intelligence & Data Science)'
+  'AMCP': [
+    'B. PHARMACY',
+    'D. PHARMACY',
+    'M. PHARMACY'
   ],
   'AMAMCHRC (BAMS)': [
-    'BAMS (Bachelor of Ayurvedic Medicine & Surgery)'
+    'B. A. M. S.'
   ],
   'AMHMCH (BHMS)': [
-    'BHMS (Bachelor of Homoeopathic Medicine & Surgery)'
-  ],
-  'AMSON (GNM)': [
-    'GNM (General Nursing & Midwifery)',
-    'B.Sc Nursing',
-    'ANM'
+    'B. H. M. S.'
   ],
   'AMPV (DIPLOMA)': [
-    'Diploma Mechanical Engineering',
-    'Diploma Civil Engineering',
-    'Diploma Electrical Engineering',
-    'Diploma Computer Engineering'
+    'DIPLOMA IN AIML',
+    'DIPLOMA IN AUTOMOBILE ENGINEERING',
+    'DIPLOMA IN CIVIL ENGINEERING',
+    'DIPLOMA IN COMPUTER ENGINEERING',
+    'DIPLOMA IN ELECTRICAL',
+    'DIPLOMA IN ELECTRONICS & COMPUTER ENGINEERING',
+    'DIPLOMA IN MECHANICAL ENGINEERING'
+  ],
+  'AMSON (GNM)': [
+    'G. N. M.'
+  ],
+  'MVMIN (GNM)': [
+    'G. N. M.'
+  ],
+  'AMCON (B. SC. NURSING)': [
+    'B. SC. NURSING'
+  ],
+  'AMIP AMBAP (PHARMACY)': [
+    'B. PHARMACY',
+    'D. PHARMACY'
+  ],
+  'WCOP (PHARMACY)': [
+    'B. PHARMACY',
+    'D. PHARMACY'
+  ],
+  'ADCET': [
+    'B.Tech Computer Science & Engineering',
+    'B.Tech Mechanical Engineering',
+    'B.Tech Civil Engineering',
+    'B.Tech Electrical Engineering'
   ],
   'Other College': [
     'General / Other'
@@ -16632,6 +16716,15 @@ async function doAddCollegeCourse() {
   if (!college || !course) {
     showToast('Please provide both College Name and Course Name.', 'error');
     return;
+  }
+
+  // Prevent duplicate addition
+  if (_collegeCoursesData && _collegeCoursesData.grouped && _collegeCoursesData.grouped[college]) {
+    var existingList = _collegeCoursesData.grouped[college].map(function(c) { return (c || '').trim().toLowerCase(); });
+    if (existingList.indexOf(course.toLowerCase()) !== -1) {
+      showToast('Course "' + course + '" already exists for college "' + college + '".', 'warning');
+      return;
+    }
   }
 
   if (addBtn) {
