@@ -7293,8 +7293,10 @@ window.google = {
           saveUser: function(userData) {
             if (!_supabase) return failureCb(new Error('Supabase client not loaded'));
             var uName = (userData.username || userData.email || '').trim().toLowerCase();
+            var displayName = (userData.name || userData.full_name || uName).trim();
             var row = {
               username: uName,
+              name: displayName,
               role: userData.role || 'Staff',
               status: userData.status || 'Active'
             };
@@ -16740,9 +16742,13 @@ function renderBankReconTable() {
         + '<td style="font-size:0.78rem;">' + escapeHtml(it.reconCreditDate ? formatDateValue(it.reconCreditDate) : '-') + '</td>'
         + '<td style="font-size:0.75rem;font-family:monospace;color:var(--text2);">' + escapeHtml(it.reconRefNo || '-') + '</td>'
         + '<td style="text-align:center;white-space:nowrap;">'
-        + '<button class="btn btn-outline btn-sm" onclick="openBankReconModal(\'' + escapeJs(it.receiptId) + '\')" title="Edit Bank Reconciliation" style="padding:3px 8px;font-size:0.75rem;">',
-        + '<span class="material-icons-round" style="font-size:14px;vertical-align:middle;">account_balance</span> ' + (isReconciled ? 'Edit' : 'Reconcile')
-        + '</button>'
+        + (isReconciled
+          ? '<button class="btn btn-ghost btn-sm" onclick="openBankReconModal(\'' + escapeJs(it.receiptId) + '\')" title="Edit Bank Reconciliation" style="padding:3px 8px;font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;color:var(--primary);">'
+            + '<span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Edit'
+            + '</button>'
+          : '<button class="btn btn-primary btn-sm" onclick="openBankReconModal(\'' + escapeJs(it.receiptId) + '\')" title="Reconcile with Bank Statement" style="padding:3px 8px;font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;">'
+            + '<span class="material-icons-round" style="font-size:14px;vertical-align:middle;">account_balance</span> Reconcile'
+            + '</button>')
         + '</td>'
         + '</tr>';
     });
