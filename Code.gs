@@ -2736,7 +2736,6 @@ function normalizeCollegeNameGas(col) {
   if (s.indexOf("DIPLOMA") !== -1 || s.indexOf("AMPV") !== -1) return "AMPV (DIPLOMA)";
   if (s.indexOf("AMCP") !== -1) return "AMCP";
   if (s.indexOf("AMGOI") !== -1) return "AMGOI";
-  if (s.indexOf("ADCET") !== -1) return "ADCET";
   return s;
 }
 
@@ -7714,10 +7713,6 @@ function ensureCollegeCoursesSheet() {
         ["AMGOI", "Master of Business Administration (MBA)", "2 Years", "Active", todayFormatted()],
         ["AMGOI", "M.Tech Engineering", "2 Years", "Active", todayFormatted()],
         ["AMGOI", "Diploma in Engineering", "3 Years", "Active", todayFormatted()],
-        ["ADCET", "B.Tech Computer Science & Engineering", "4 Years", "Active", todayFormatted()],
-        ["ADCET", "B.Tech Mechanical Engineering", "4 Years", "Active", todayFormatted()],
-        ["ADCET", "B.Tech Civil Engineering", "4 Years", "Active", todayFormatted()],
-        ["ADCET", "B.Tech Electrical Engineering", "4 Years", "Active", todayFormatted()],
         ["AMAMCHRC (BAMS)", "B. A. M. S.", "5.5 Years", "Active", todayFormatted()],
         ["AMAMCHRC (BAMS)", "BAMS", "5.5 Years", "Active", todayFormatted()],
         ["AMAMCHRC (BAMS)", "Bachelor of Ayurvedic Medicine and Surgery (BAMS)", "5.5 Years", "Active", todayFormatted()],

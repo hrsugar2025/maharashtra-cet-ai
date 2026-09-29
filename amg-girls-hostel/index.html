@@ -1201,7 +1201,6 @@ function normalizeCollegeNameKey(col) {
   if (s.indexOf('DIPLOMA') !== -1 || s.indexOf('AMPV') !== -1) return 'AMPV (DIPLOMA)';
   if (s.indexOf('AMCP') !== -1) return 'AMCP';
   if (s.indexOf('AMGOI') !== -1) return 'AMGOI';
-  if (s.indexOf('ADCET') !== -1) return 'ADCET';
   return s;
 }
 
@@ -1394,7 +1393,7 @@ if (typeof window.google.script.run === 'undefined') {
         </div>
       </div>
       <div class="form-group"><label class="form-label">Year of Study *</label><select id="sf-yearOfStudy" class="form-select"><option value="">Select Year</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option><option>5th Year / Intern</option><option>PG / Masters</option></select></div>
-      <div class="form-group span-2"><label class="form-label">College Name *</label><input type="text" id="sf-collegeName" class="form-input" placeholder="Full name of your college" list="sf-college-datalist"/><datalist id="sf-college-datalist"><option value="AMGOI">AMGOI</option><option value="AMCP">AMCP</option><option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option><option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option><option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option><option value="AMSON (GNM)">AMSON (GNM)</option><option value="MVMIN (GNM)">MVMIN (GNM)</option><option value="AMCON (B. SC. NURSING)">AMCON (B. SC. NURSING)</option><option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option><option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option><option value="ADCET">ADCET</option><option value="Other College">Other College</option></datalist></div>
+      <div class="form-group span-2"><label class="form-label">College Name *</label><input type="text" id="sf-collegeName" class="form-input" placeholder="Full name of your college" list="sf-college-datalist"/><datalist id="sf-college-datalist"><option value="AMGOI">AMGOI</option><option value="AMCP">AMCP</option><option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option><option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option><option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option><option value="AMSON (GNM)">AMSON (GNM)</option><option value="MVMIN (GNM)">MVMIN (GNM)</option><option value="AMCON (B. SC. NURSING)">AMCON (B. SC. NURSING)</option><option value="AMIP AMBAP (PHARMACY)">AMIP AMBAP (PHARMACY)</option><option value="WCOP (PHARMACY)">WCOP (PHARMACY)</option><option value="Other College">Other College</option></datalist></div>
     </div>
     <div class="section-title">ID &amp; Emergency</div>
     <div class="form-grid">
@@ -1628,7 +1627,6 @@ if (typeof window.google.script.run === 'undefined') {
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMAMCHRC (BAMS)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMAMCHRC (BAMS)</span></label>
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMGOI" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMGOI</span></label>
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMHMCH (BHMS)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMHMCH (BHMS)</span></label>
-                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="ADCET" onchange="onSpecificCollegeToggle('fs-col-')"/><span>ADCET</span></label>
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMCP" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMCP</span></label>
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMSON (GNM)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMSON (GNM)</span></label>
                   <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="fs-col-cb" value="AMPV (DIPLOMA)" onchange="onSpecificCollegeToggle('fs-col-')"/><span>AMPV (DIPLOMA)</span></label>
@@ -2622,7 +2620,7 @@ if (typeof window.google.script.run === 'undefined') {
             <div class="form-grid" style="grid-template-columns:1.2fr 1.8fr 1fr auto;gap:12px;align-items:flex-end;">
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">College Name *</label>
-                <input type="text" id="cc-college-input" class="form-input" placeholder="e.g. AMGOI, ADCET..." list="cc-college-datalist"/>
+                <input type="text" id="cc-college-input" class="form-input" placeholder="e.g. AMGOI, AMCP..." list="cc-college-datalist"/>
                 <datalist id="cc-college-datalist"></datalist>
               </div>
               <div class="form-group" style="margin-bottom:0;">
@@ -3888,7 +3886,6 @@ if (typeof window.google.script.run === 'undefined') {
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMAMCHRC (BAMS)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMAMCHRC (BAMS)</span></label>
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMGOI" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMGOI</span></label>
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMHMCH (BHMS)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMHMCH (BHMS)</span></label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="ADCET" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>ADCET</span></label>
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMCP" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMCP</span></label>
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMSON (GNM)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMSON (GNM)</span></label>
             <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer;"><input type="checkbox" class="edit-fs-col-cb" value="AMPV (DIPLOMA)" onchange="onSpecificCollegeToggle('edit-fs-col-')"/><span>AMPV (DIPLOMA)</span></label>
@@ -3940,7 +3937,6 @@ if (typeof window.google.script.run === 'undefined') {
             <option value="AMAMCHRC (BAMS)">AMAMCHRC (BAMS)</option>
             <option value="AMGOI">AMGOI</option>
             <option value="AMHMCH (BHMS)">AMHMCH (BHMS)</option>
-            <option value="ADCET">ADCET</option>
             <option value="AMCP">AMCP</option>
             <option value="AMSON (GNM)">AMSON (GNM)</option>
             <option value="AMPV (DIPLOMA)">AMPV (DIPLOMA)</option>
@@ -5195,13 +5191,16 @@ window.google = {
             _supabase.from('college_courses').select('*').order('college_name').then(function(res) {
               if (res.error) failureCb(res.error);
               else {
+                // Background cleanup of ADCET if present
+                _supabase.from('college_courses').delete().ilike('college_name', '%adcet%').then(function() {}).catch(function() {});
+
                 var list = [];
                 var grouped = {};
                 var seen = {};
                 (res.data || []).forEach(function(c) {
                   var cCol = (c.college_name || '').trim();
                   var cCrs = (c.course_name || '').trim();
-                  if (!cCol || !cCrs) return;
+                  if (!cCol || !cCrs || cCol.toUpperCase() === 'ADCET' || cCol.toUpperCase().indexOf('ADCET') !== -1) return;
                   var dedupeKey = cCol.toLowerCase() + '|||' + cCrs.toLowerCase();
                   if (seen[dedupeKey]) return;
                   seen[dedupeKey] = true;
@@ -11442,12 +11441,6 @@ var MASTER_COLLEGE_COURSES = {
     'B. PHARMACY',
     'D. PHARMACY'
   ],
-  'ADCET': [
-    'B.Tech Computer Science & Engineering',
-    'B.Tech Mechanical Engineering',
-    'B.Tech Civil Engineering',
-    'B.Tech Electrical Engineering'
-  ],
   'Other College': [
     'General / Other'
   ]
@@ -11476,7 +11469,7 @@ function populatePendingFeesFilterDropdowns() {
           if (r.status === 'Active' || !r.status) {
             var col = (r.college_name || '').trim();
             var crs = (r.course_name || r.course || '').trim();
-            if (col) {
+            if (col && col.toUpperCase() !== 'ADCET' && col.toUpperCase().indexOf('ADCET') === -1) {
               if (!grouped[col]) grouped[col] = [];
               if (crs && grouped[col].indexOf(crs) === -1) grouped[col].push(crs);
             }
@@ -13595,7 +13588,7 @@ function renderCollegeSummaryBlocks(activeCollege) {
       icon = 'medical_services';
     } else if (colLower.includes('diploma') || colLower.includes('polytechnic') || colLower.includes('ampv')) {
       icon = 'architecture';
-    } else if (colLower.includes('adcet') || colLower.includes('eng') || colLower.includes('tech') || colLower.includes('amgoi')) {
+    } else if (colLower.includes('eng') || colLower.includes('tech') || colLower.includes('amgoi')) {
       icon = 'engineering';
     } else if (cName === '(Not Specified)') {
       icon = 'help_outline';
