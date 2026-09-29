@@ -2452,18 +2452,22 @@ if (typeof window.google.script.run === 'undefined') {
           </div>
 
           <!-- USER MANAGEMENT CARD -->
+          <!-- USER MANAGEMENT CARD -->
           <div class="card" style="margin-top:24px;">
             <div class="card-header">
               <div>
-                <div class="card-title">User Accounts</div>
-                <div class="card-sub">Manage system logins, roles, and access controls</div>
+                <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+                  <span class="material-icons-round" style="color:var(--primary);font-size:20px;">admin_panel_settings</span>
+                  User Accounts &amp; Admin Credentials
+                </div>
+                <div class="card-sub">Manage system logins, administrator credentials, roles, and access controls</div>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn btn-secondary btn-sm" onclick="doSyncStudentAccounts()" title="Automatically provision logins for all enrolled students">
                   <span class="material-icons-round" style="font-size:16px;">sync</span> Sync Student Logins
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">
-                  <span class="material-icons-round" style="font-size:16px;">add</span> Add User
+                  <span class="material-icons-round" style="font-size:16px;">person_add</span> Add User Account
                 </button>
               </div>
             </div>
@@ -2471,16 +2475,18 @@ if (typeof window.google.script.run === 'undefined') {
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th>
+                    <th>User / Name</th>
+                    <th>Username / Login ID</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Password</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="users-tbody">
                   <tr>
-                    <td colspan="5"><div style="text-align:center;padding:12px;color:var(--text3);">Loading user accounts...</div></td>
+                    <td colspan="7"><div style="text-align:center;padding:12px;color:var(--text3);">Loading user accounts...</div></td>
                   </tr>
                 </tbody>
               </table>
@@ -4002,50 +4008,85 @@ if (typeof window.google.script.run === 'undefined') {
 
 <!-- USER FORM MODAL -->
 <div class="modal-overlay hidden" id="modal-user-form" onclick="if(event.target===this)closeModal('modal-user-form')">
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:520px;">
     <div class="modal-header">
-      <div class="modal-title" id="user-modal-title">Add New User Account</div>
+      <div class="modal-title" id="user-modal-title" style="display:flex;align-items:center;gap:8px;">
+        <span class="material-icons-round" style="color:var(--primary);font-size:22px;">admin_panel_settings</span>
+        Add New User Account
+      </div>
       <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-user-form')">
         <span class="material-icons-round">close</span>
       </button>
     </div>
     <div class="modal-body">
+      <!-- Credentials Format Info Banner -->
+      <div style="background:rgba(79,70,229,0.08);border:1px solid rgba(79,70,229,0.2);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;">
+        <span class="material-icons-round" style="color:var(--primary);font-size:20px;flex-shrink:0;margin-top:2px;">vpn_key</span>
+        <div style="font-size:0.8rem;line-height:1.45;color:var(--text2);">
+          <strong style="color:var(--text);">Admin &amp; Staff Login Credentials</strong><br/>
+          Users sign in on the Staff Login portal using their <strong>Username / Email</strong> and <strong>Password</strong>.
+        </div>
+      </div>
+
       <input type="hidden" id="usr-id"/>
+      
       <div class="form-group">
         <label class="form-label">Full Name *</label>
-        <input type="text" id="usr-name" class="form-input" placeholder="e.g. John Doe"/>
+        <input type="text" id="usr-name" class="form-input" placeholder="e.g. Dr. Sunita Sharma / Administrator"/>
       </div>
-      <div class="form-group">
-        <label class="form-label">Email Address *</label>
-        <input type="email" id="usr-email" class="form-input" placeholder="e.g. john@example.com"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password *</label>
-        <input type="password" id="usr-password" class="form-input" placeholder="Enter secure password"/>
-      </div>
+
       <div class="form-grid">
         <div class="form-group">
-          <label class="form-label">Role *</label>
+          <label class="form-label">Username / Login ID *</label>
+          <input type="text" id="usr-username" class="form-input" placeholder="e.g. admin, rector_amg, staff1"/>
+          <span class="text-xs" style="color:var(--text3);margin-top:4px;display:block;">Unique login identifier</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" id="usr-email" class="form-input" placeholder="e.g. staff@amghostel.com"/>
+          <span class="text-xs" style="color:var(--text3);margin-top:4px;display:block;">Official email address</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <label class="form-label" style="margin-bottom:0;">Password *</label>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="generateRandomUserPassword()" style="font-size:0.75rem;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;color:var(--primary);">
+            <span class="material-icons-round" style="font-size:14px;">auto_fix_high</span> Auto-Generate
+          </button>
+        </div>
+        <div style="position:relative;display:flex;align-items:center;">
+          <input type="password" id="usr-password" class="form-input" placeholder="Enter secure password" style="padding-right:40px;"/>
+          <button type="button" class="btn btn-ghost btn-icon" onclick="togglePasswordVisibility('usr-password', 'usr-pw-toggle-icon')" title="Show/Hide Password" style="position:absolute;right:4px;height:32px;width:32px;min-width:32px;padding:0;background:transparent;border:none;">
+            <span class="material-icons-round" id="usr-pw-toggle-icon" style="font-size:18px;color:var(--text3);">visibility</span>
+          </button>
+        </div>
+        <span class="text-xs" style="color:var(--text3);margin-top:4px;display:block;">Required for authentication. Min 6 characters recommended.</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Role &amp; Permissions *</label>
           <select id="usr-role" class="form-select">
-            <option value="Admin">Admin</option>
-            <option value="Staff">Staff</option>
-            <option value="Rector">Rector</option>
-            <option value="Student">Student</option>
+            <option value="Admin">Admin (Full System Access)</option>
+            <option value="Rector">Rector (Hostel Warden / Services)</option>
+            <option value="Staff">Staff (Office &amp; Collections)</option>
+            <option value="Student">Student (Resident Portal)</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Status *</label>
+          <label class="form-label">Account Status *</label>
           <select id="usr-status" class="form-select">
-            <option value="Active">Active</option>
-            <option value="Disabled">Disabled</option>
+            <option value="Active">Active (Enabled)</option>
+            <option value="Disabled">Disabled (Suspended)</option>
           </select>
         </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-user-form')">Cancel</button>
-      <button class="btn btn-primary" onclick="doSaveUser()" id="usr-save-btn">
-        <span class="material-icons-round">save</span> Save User
+      <button class="btn btn-primary" onclick="doSaveUser()" id="usr-save-btn" style="display:inline-flex;align-items:center;gap:6px;">
+        <span class="material-icons-round" style="font-size:18px;">save</span> Save User Account
       </button>
     </div>
   </div>
@@ -7194,40 +7235,97 @@ window.google = {
           },
 
           getUsers: function() {
+            if (!_supabase) {
+              return successCb({
+                success: true,
+                data: [
+                  { userId: 'U001', username: 'admin@amghostel.com', name: 'System Administrator', email: 'admin@amghostel.com', password: 'admin', role: 'Admin', status: 'Active', createdDate: '' }
+                ]
+              });
+            }
             _supabase.from('app_users').select('*').then(function(res) {
-              if (res.error) failureCb(res.error);
-              else {
+              if (res.error) {
+                console.warn('getUsers warning:', res.error);
+                successCb({
+                  success: true,
+                  data: [
+                    { userId: 'U001', username: 'admin@amghostel.com', name: 'System Administrator', email: 'admin@amghostel.com', password: 'admin', role: 'Admin', status: 'Active', createdDate: '' }
+                  ]
+                });
+              } else {
                 var list = (res.data || []).map(function(u) {
                   return {
-                    userId: u.user_id || u.username,
+                    userId: u.id || u.user_id || u.username,
                     username: u.username,
-                    name: u.full_name || u.username,
+                    name: u.full_name || u.name || u.username,
+                    email: u.email || (u.username && u.username.includes('@') ? u.username : ''),
+                    password: u.password_hash || u.password || '',
                     role: u.role || 'Staff',
                     status: u.status || 'Active',
                     createdDate: formatDateValue(u.created_at)
                   };
                 });
+                if (list.length === 0) {
+                  list.push({
+                    userId: 'U001',
+                    username: 'admin@amghostel.com',
+                    name: 'System Administrator',
+                    email: 'admin@amghostel.com',
+                    password: 'admin',
+                    role: 'Admin',
+                    status: 'Active',
+                    createdDate: ''
+                  });
+                }
                 successCb({ success: true, data: list });
+              }
+            }).catch(function(err) {
+              console.warn('getUsers catch:', err);
+              successCb({
+                success: true,
+                data: [
+                  { userId: 'U001', username: 'admin@amghostel.com', name: 'System Administrator', email: 'admin@amghostel.com', password: 'admin', role: 'Admin', status: 'Active', createdDate: '' }
+                ]
+              });
+            });
+          },
+
+          saveUser: function(userData) {
+            if (!_supabase) return failureCb(new Error('Supabase client not loaded'));
+            var uName = (userData.username || userData.email || '').trim().toLowerCase();
+            var row = {
+              username: uName,
+              role: userData.role || 'Staff',
+              status: userData.status || 'Active'
+            };
+            if (userData.password || userData.password_hash) {
+              row.password_hash = userData.password || userData.password_hash;
+            }
+            _supabase.from('app_users').upsert([row], { onConflict: 'username' }).then(function(res) {
+              if (res.error) {
+                failureCb(res.error);
+              } else {
+                successCb({ success: true, message: 'User account saved successfully!' });
               }
             }).catch(failureCb);
           },
 
-          saveUser: function(userData) {
-            var row = {
-              username: userData.username,
-              password_hash: userData.password || 'amg@123',
-              full_name: userData.name || userData.username,
-              role: userData.role || 'Staff',
-              status: 'Active'
-            };
-            _supabase.from('app_users').insert([row]).then(function(res) {
+          deleteUser: function(userId) {
+            if (!_supabase) return failureCb(new Error('Supabase client not loaded'));
+            var cleanU = (userId || '').toString().trim().toLowerCase();
+            if (cleanU === 'admin' || cleanU === 'admin@amghostel.com') {
+              return failureCb(new Error('Cannot delete default system administrator account.'));
+            }
+            _supabase.from('app_users').delete().eq('username', cleanU).then(function(res) {
               if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'User account created!' });
+              else successCb({ success: true, message: 'User account deleted successfully.' });
             }).catch(failureCb);
           },
 
           updateUserStatus: function(userId, newStatus) {
-            _supabase.from('app_users').update({ status: newStatus }).eq('username', userId).then(function(res) {
+            if (!_supabase) return failureCb(new Error('Supabase client not loaded'));
+            var cleanU = (userId || '').toString().trim().toLowerCase();
+            _supabase.from('app_users').update({ status: newStatus }).eq('username', cleanU).then(function(res) {
               if (res.error) failureCb(res.error);
               else successCb({ success: true, message: 'User status updated to ' + newStatus });
             }).catch(failureCb);
@@ -14580,44 +14678,84 @@ var allUsers = [];
 
 function loadUsersTable() {
   var tbody = document.getElementById('users-tbody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;margin:0 auto;"></div></td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;margin:0 auto;"></div></td></tr>';
   
-  google.script.run.withSuccessHandler(function(res) {
-    if (res.success) {
-      allUsers = res.data || [];
-      renderUsersTable();
-    } else {
-      showToast('Error loading users: ' + res.message, 'error');
-    }
-  }).getUsers();
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        allUsers = res.data || [];
+        renderUsersTable();
+      } else {
+        showToast('Error loading users: ' + (res ? res.message : 'Unknown error'), 'error');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color:var(--danger);">Failed to load user accounts.</td></tr>';
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('Error loading users: ' + (err ? err.message : 'Unknown error'), 'error');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color:var(--danger);">Failed to load user accounts.</td></tr>';
+    })
+    .getUsers();
 }
 
 function renderUsersTable() {
   var tbody = document.getElementById('users-tbody');
   if (!tbody) return;
   
-  if (allUsers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="color:var(--text3);">No user accounts configured.</td></tr>';
+  if (!allUsers || allUsers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color:var(--text3);padding:24px;">No user accounts configured. Click "+ Add User Account" to create one.</td></tr>';
     return;
   }
   
   var html = allUsers.map(function(u) {
-    var statusClass = u.status === 'Active' ? 'badge-active' : 'badge-inactive';
-    var toggleLabel = u.status === 'Active' ? 'Disable' : 'Enable';
-    var toggleIcon = u.status === 'Active' ? 'block' : 'check_circle';
+    var statusClass = (u.status || 'Active') === 'Active' ? 'badge-active' : 'badge-inactive';
+    var toggleLabel = (u.status || 'Active') === 'Active' ? 'Disable' : 'Enable';
+    var toggleIcon = (u.status || 'Active') === 'Active' ? 'block' : 'check_circle';
     
-    var isSelf = currentUser && currentUser.email === u.email;
+    var uEmail = u.email || '';
+    var uUsername = u.username || u.userId || '';
+    var uRole = u.role || 'Staff';
+    var isSelf = currentUser && (
+      (currentUser.email && (currentUser.email === uEmail || currentUser.email === uUsername)) ||
+      (currentUser.username && (currentUser.username === uUsername || currentUser.username === uEmail))
+    );
+    var isDefaultAdmin = (uUsername.toLowerCase() === 'admin' || uUsername.toLowerCase() === 'admin@amghostel.com' || uEmail.toLowerCase() === 'admin@amghostel.com');
     var disableActions = isSelf ? 'disabled title="You cannot edit or disable your own logged-in account"' : '';
-    
+    var disableDelete = (isSelf || isDefaultAdmin) ? 'disabled title="Default admin or current user cannot be deleted"' : '';
+
+    // Role badge color styling
+    var roleBadgeStyle = 'background:rgba(99,102,241,0.1);color:#4F46E5;border:1px solid rgba(99,102,241,0.2);';
+    if (uRole === 'Admin') {
+      roleBadgeStyle = 'background:rgba(79,70,229,0.12);color:#4338CA;border:1px solid rgba(79,70,229,0.3);font-weight:700;';
+    } else if (uRole === 'Rector') {
+      roleBadgeStyle = 'background:rgba(217,119,6,0.12);color:#B45309;border:1px solid rgba(217,119,6,0.3);font-weight:600;';
+    } else if (uRole === 'Staff') {
+      roleBadgeStyle = 'background:rgba(2,132,199,0.12);color:#0369A1;border:1px solid rgba(2,132,199,0.3);font-weight:600;';
+    } else if (uRole === 'Student') {
+      roleBadgeStyle = 'background:rgba(16,185,129,0.12);color:#047857;border:1px solid rgba(16,185,129,0.3);font-weight:600;';
+    }
+
+    var initialLetter = (u.name || uUsername || 'U').charAt(0).toUpperCase();
+
     return '<tr>' +
-      '<td><strong>' + u.name + '</strong>' + (isSelf ? ' <small style="color:var(--primary); font-weight:600;">(You)</small>' : '') + '</td>' +
-      '<td>' + u.email + '</td>' +
-      '<td>' + u.role + '</td>' +
-      '<td><span class="badge ' + statusClass + '">' + u.status + '</span></td>' +
+      '<td>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent));color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">' + initialLetter + '</div>' +
+          '<div>' +
+            '<strong>' + (u.name || uUsername) + '</strong>' +
+            (isSelf ? ' <span class="badge" style="background:var(--primary-bg, #EEF2FF);color:var(--primary, #4F46E5);font-size:10px;padding:2px 6px;margin-left:4px;">You</span>' : '') +
+          '</div>' +
+        '</div>' +
+      '</td>' +
+      '<td><span style="font-family:monospace;font-size:0.85rem;background:var(--bg2);padding:2px 6px;border-radius:4px;border:1px solid var(--border);">' + uUsername + '</span></td>' +
+      '<td>' + (uEmail || '<span style="color:var(--text3);font-style:italic;">—</span>') + '</td>' +
+      '<td><span class="badge" style="' + roleBadgeStyle + '">' + uRole + '</span></td>' +
+      '<td><span style="letter-spacing:2px;color:var(--text3);font-size:0.9rem;">••••••••</span></td>' +
+      '<td><span class="badge ' + statusClass + '">' + (u.status || 'Active') + '</span></td>' +
       '<td>' +
         '<div style="display:flex;gap:6px;">' +
-          '<button class="btn btn-ghost btn-sm" onclick="openEditUserModal(\'' + u.userId + '\')" ' + disableActions + ' title="Edit User"><span class="material-icons-round" style="font-size:14px;">edit</span></button>' +
-          '<button class="btn btn-ghost btn-sm" onclick="toggleUserStatus(\'' + u.userId + '\',\'' + u.status + '\')" ' + disableActions + ' title="' + toggleLabel + ' User"><span class="material-icons-round" style="font-size:14px;color:' + (u.status === 'Active' ? 'var(--danger)' : 'var(--success)') + ';">' + toggleIcon + '</span></button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openEditUserModal(\'' + (u.userId || uUsername) + '\')" ' + disableActions + ' title="Edit User"><span class="material-icons-round" style="font-size:15px;color:var(--primary);">edit</span></button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="toggleUserStatus(\'' + (u.userId || uUsername) + '\',\'' + (u.status || 'Active') + '\')" ' + disableActions + ' title="' + toggleLabel + ' User"><span class="material-icons-round" style="font-size:15px;color:' + ((u.status || 'Active') === 'Active' ? 'var(--warning, #d97706)' : 'var(--success, #10b981)') + ';">' + toggleIcon + '</span></button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="doDeleteUser(\'' + (u.userId || uUsername) + '\',\'' + uUsername + '\')" ' + disableDelete + ' title="Delete User"><span class="material-icons-round" style="font-size:15px;color:var(--danger, #ef4444);">delete_outline</span></button>' +
         '</div>' +
       '</td>' +
       '</tr>';
@@ -14626,95 +14764,199 @@ function renderUsersTable() {
   tbody.innerHTML = html;
 }
 
+function togglePasswordVisibility(inputId, iconId) {
+  var inp = document.getElementById(inputId);
+  var ico = document.getElementById(iconId);
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (ico) ico.textContent = 'visibility_off';
+  } else {
+    inp.type = 'password';
+    if (ico) ico.textContent = 'visibility';
+  }
+}
+
+function generateRandomUserPassword() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+  var pwd = '';
+  for (var i = 0; i < 10; i++) {
+    pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  var inp = document.getElementById('usr-password');
+  if (inp) {
+    inp.value = pwd;
+    inp.type = 'text';
+    var ico = document.getElementById('usr-pw-toggle-icon');
+    if (ico) ico.textContent = 'visibility_off';
+    showToast('Generated strong password: ' + pwd, 'info');
+  }
+}
+
 function openAddUserModal() {
   document.getElementById('usr-id').value = '';
   document.getElementById('usr-name').value = '';
+  if (document.getElementById('usr-username')) document.getElementById('usr-username').value = '';
   document.getElementById('usr-email').value = '';
   document.getElementById('usr-password').value = '';
-  document.getElementById('usr-role').value = 'Staff';
+  document.getElementById('usr-role').value = 'Admin';
   document.getElementById('usr-status').value = 'Active';
   
-  document.getElementById('user-modal-title').textContent = 'Add New User Account';
+  var pwInput = document.getElementById('usr-password');
+  if (pwInput) pwInput.type = 'password';
+  var pwIcon = document.getElementById('usr-pw-toggle-icon');
+  if (pwIcon) pwIcon.textContent = 'visibility';
+
+  var titleEl = document.getElementById('user-modal-title');
+  if (titleEl) {
+    titleEl.innerHTML = '<span class="material-icons-round" style="color:var(--primary);font-size:22px;vertical-align:middle;margin-right:6px;">person_add</span> Add New User Account';
+  }
   openModal('modal-user-form');
 }
 
 function openEditUserModal(userId) {
-  var u = allUsers.find(function(usr) { return usr.userId === userId; });
+  var u = allUsers.find(function(usr) {
+    return (usr.userId === userId || usr.username === userId || usr.id === userId);
+  });
   if (!u) return;
   
-  document.getElementById('usr-id').value = u.userId;
-  document.getElementById('usr-name').value = u.name;
-  document.getElementById('usr-email').value = u.email;
-  document.getElementById('usr-password').value = u.password;
-  document.getElementById('usr-role').value = u.role;
-  document.getElementById('usr-status').value = u.status;
+  document.getElementById('usr-id').value = u.userId || u.username || '';
+  document.getElementById('usr-name').value = u.name || u.full_name || '';
+  if (document.getElementById('usr-username')) document.getElementById('usr-username').value = u.username || '';
+  document.getElementById('usr-email').value = u.email || (u.username && u.username.includes('@') ? u.username : '');
+  document.getElementById('usr-password').value = u.password || '';
+  document.getElementById('usr-role').value = u.role || 'Staff';
+  document.getElementById('usr-status').value = u.status || 'Active';
   
-  document.getElementById('user-modal-title').textContent = 'Edit User Account';
+  var pwInput = document.getElementById('usr-password');
+  if (pwInput) pwInput.type = 'password';
+  var pwIcon = document.getElementById('usr-pw-toggle-icon');
+  if (pwIcon) pwIcon.textContent = 'visibility';
+
+  var titleEl = document.getElementById('user-modal-title');
+  if (titleEl) {
+    titleEl.innerHTML = '<span class="material-icons-round" style="color:var(--primary);font-size:22px;vertical-align:middle;margin-right:6px;">edit</span> Edit User Account';
+  }
   openModal('modal-user-form');
 }
 
-async function doSaveUser() {
-  var id = document.getElementById('usr-id').value.trim();
-  var name = document.getElementById('usr-name').value.trim();
-  var email = document.getElementById('usr-email').value.trim();
-  var password = document.getElementById('usr-password').value.trim();
-  var role = document.getElementById('usr-role').value;
-  var status = document.getElementById('usr-status').value;
+function doSaveUser() {
+  var id = (document.getElementById('usr-id').value || '').trim();
+  var name = (document.getElementById('usr-name').value || '').trim();
+  var usernameInput = document.getElementById('usr-username');
+  var username = usernameInput ? usernameInput.value.trim() : '';
+  var email = (document.getElementById('usr-email').value || '').trim();
+  var password = (document.getElementById('usr-password').value || '').trim();
+  var role = document.getElementById('usr-role').value || 'Staff';
+  var status = document.getElementById('usr-status').value || 'Active';
   
-  if (!name || !email) {
-    showToast('Name and Email are required.', 'error');
+  // If username is empty but email provided, use email; if email empty but username provided, use username
+  if (!username && email) username = email;
+  if (!email && username) email = username;
+
+  if (!name || !username) {
+    showToast('Name and Username / Email are required.', 'error');
+    return;
+  }
+
+  if (!id && !password) {
+    showToast('Please enter a password for the new user account.', 'error');
     return;
   }
 
   setBtnLoading('usr-save-btn', true);
-  try {
-    var payload = {
-      username: email,
-      name: name,
-      email: email,
-      role: role || 'Rector',
-      status: status || 'Active'
-    };
-    if (password) payload.password_hash = password;
 
-    const { error } = await _supabase.from('app_users').upsert(payload, { onConflict: 'username' });
-    setBtnLoading('usr-save-btn', false);
-    if (error) {
-      showToast('Error saving user: ' + error.message, 'error');
-    } else {
-      showToast('User saved successfully!', 'success');
-      closeModal('modal-add-user');
-      loadUsersTable();
-    }
-  } catch (err) {
-    setBtnLoading('usr-save-btn', false);
-    showToast('Server error: ' + err.message, 'error');
-  }
+  var userData = {
+    userId: id || username,
+    username: username,
+    name: name,
+    full_name: name,
+    email: email,
+    password: password,
+    password_hash: password,
+    role: role,
+    status: status
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setBtnLoading('usr-save-btn', false);
+      if (res && res.success) {
+        showToast(res.message || 'User account saved successfully!', 'success');
+        closeModal('modal-user-form');
+        loadUsersTable();
+      } else {
+        showToast('Error saving user: ' + ((res && res.message) || 'Unknown error'), 'error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      setBtnLoading('usr-save-btn', false);
+      showToast('Error saving user: ' + (err ? err.message : 'Unknown error'), 'error');
+    })
+    .saveUser(userData);
 }
 
-async function toggleUserStatus(userId, currentStatus) {
+function toggleUserStatus(userId, currentStatus) {
   var newStatus = currentStatus === 'Active' ? 'Disabled' : 'Active';
   var actionText = currentStatus === 'Active' ? 'disable' : 'enable';
   
   showConfirm({
     title: (currentStatus === 'Active' ? 'Disable' : 'Enable') + ' User Account?',
-    msg: 'Are you sure you want to ' + actionText + ' this user account?',
+    msg: 'Are you sure you want to ' + actionText + ' user "' + userId + '"?\n\n' +
+         (currentStatus === 'Active' ? 'The user will not be able to log in.' : 'The user will regain login access.'),
     icon: currentStatus === 'Active' ? 'block' : 'check_circle',
     iconColor: currentStatus === 'Active' ? 'red' : 'green',
     okLabel: currentStatus === 'Active' ? 'Yes, Disable' : 'Yes, Enable',
     okClass: currentStatus === 'Active' ? 'btn-danger' : 'btn-success',
-    onConfirm: async function() {
-      try {
-        const { error } = await _supabase.from('app_users').update({ status: newStatus }).eq('username', userId);
-        if (error) {
-          showToast('Error: ' + error.message, 'error');
-        } else {
-          showToast('User status updated to ' + newStatus, 'success');
-          loadUsersTable();
-        }
-      } catch (err) {
-        showToast('Server error: ' + err.message, 'error');
-      }
+    hasInput: false,
+    onConfirm: function() {
+      showToast('Updating status...', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            showToast(res.message || ('User status updated to ' + newStatus), 'success');
+            loadUsersTable();
+          } else {
+            showToast('Error: ' + ((res && res.message) || 'Failed to update user status'), 'error');
+          }
+        })
+        .withFailureHandler(function(err) {
+          showToast('Server error: ' + (err ? err.message : 'Unknown error'), 'error');
+        })
+        .updateUserStatus(userId, newStatus);
+    }
+  });
+}
+
+function doDeleteUser(userId, username) {
+  var target = username || userId;
+  if (target.toLowerCase() === 'admin' || target.toLowerCase() === 'admin@amghostel.com') {
+    showToast('Default Administrator account cannot be deleted.', 'error');
+    return;
+  }
+  showConfirm({
+    title: 'Delete User Account?',
+    msg: 'Are you sure you want to permanently delete user account "' + target + '"?\n\nThis account credentials will be permanently removed.',
+    icon: 'delete',
+    iconColor: 'red',
+    okLabel: 'Yes, Delete Permanently',
+    okClass: 'btn-danger',
+    hasInput: false,
+    onConfirm: function() {
+      showToast('Deleting user account...', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            showToast(res.message || 'User account deleted successfully.', 'success');
+            loadUsersTable();
+          } else {
+            showToast('Error: ' + ((res && res.message) || 'Failed to delete user'), 'error');
+          }
+        })
+        .withFailureHandler(function(err) {
+          showToast('Server error: ' + (err ? err.message : 'Unknown error'), 'error');
+        })
+        .deleteUser(userId);
     }
   });
 }

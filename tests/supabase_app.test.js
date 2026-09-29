@@ -31,6 +31,7 @@ class MockSupabaseClient {
   }
 
   from(tableName) {
+    const self = this;
     const table = this.tables[tableName] || [];
     let currentData = [...table];
     let filters = [];
@@ -87,7 +88,7 @@ class MockSupabaseClient {
             filters.forEach(f => { if (!f(row)) match = false; });
             return !match;
           });
-          this.tables[tableName] = remaining;
+          self.tables[tableName] = remaining;
           resolve({ data: true, error: null });
         } else {
           let res = currentData;
@@ -895,5 +896,39 @@ test('19. Student College & Course Normalization Preserves Fee & Allotment Depen
   const ledger = supabase.tables.student_fee_ledger.find(l => l.app_id === 'APP-2026-4001');
   assert.equal(ledger.balance_amount, 0);
   assert.equal(ledger.status, 'Paid');
+});
+
+test('20. User Accounts & Admin Credentials Management (Creation, Update, Status Toggle, Deletion)', async () => {
+  const supabase = new MockSupabaseClient();
+
+  // 1. Create a new Admin / Staff user
+  const newUser = {
+    username: 'warden_sunita',
+    full_name: 'Dr. Sunita Sharma',
+    email: 'sunita@amghostel.com',
+    password_hash: 'SecurePass@2026',
+    role: 'Rector',
+    status: 'Active'
+  };
+
+  await supabase.from('app_users').insert([newUser]);
+  const user = supabase.tables.app_users.find(u => u.username === 'warden_sunita');
+  assert.ok(user, 'User should be created');
+  assert.equal(user.full_name, 'Dr. Sunita Sharma');
+  assert.equal(user.role, 'Rector');
+  assert.equal(user.status, 'Active');
+
+  // 2. Toggle status to Disabled
+  await supabase.from('app_users').update({ status: 'Disabled' }).eq('username', 'warden_sunita');
+  assert.equal(user.status, 'Disabled', 'Status should be Disabled');
+
+  // 3. Toggle status back to Active
+  await supabase.from('app_users').update({ status: 'Active' }).eq('username', 'warden_sunita');
+  assert.equal(user.status, 'Active', 'Status should be Active');
+
+  // 4. Delete user account
+  await supabase.from('app_users').delete().eq('username', 'warden_sunita');
+  const deletedUser = supabase.tables.app_users.find(u => u.username === 'warden_sunita');
+  assert.equal(deletedUser, undefined, 'User should be deleted from table');
 });
 

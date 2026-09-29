@@ -4980,6 +4980,30 @@ function saveUser(userData) {
   }
 }
 
+function deleteUser(userId) {
+  try {
+    ensureUserStatusColumn();
+    var cleanId = (userId || "").toString().trim().toLowerCase();
+    if (cleanId === "admin" || cleanId === "admin@amghostel.com") {
+      return { success: false, message: "Cannot delete default system administrator account." };
+    }
+    var sheet = getSheet("USERS");
+    var data = sheet.getDataRange().getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (!data[i][0] || data[i][0].toString().trim().toUpperCase() === "USER_ID") continue;
+      var rowUserId = data[i][0].toString().trim().toLowerCase();
+      var rowEmail = (data[i][2] || "").toString().trim().toLowerCase();
+      if (rowUserId === cleanId || rowEmail === cleanId) {
+        sheet.deleteRow(i + 1);
+        return { success: true, message: "User account deleted successfully." };
+      }
+    }
+    return { success: false, message: "User account not found." };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
 function updateUserStatus(userId, status) {
   try {
     ensureUserStatusColumn();
