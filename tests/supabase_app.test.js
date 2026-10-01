@@ -1060,3 +1060,115 @@ test('22. Pending Fees Dataset Filtering Semester 1 vs Semester 2 Wise', async (
   assert.equal(allList.length, 5);
 });
 
+test('23. Student Personal Data Course and College Normalizer (Bams -> B. A. M. S., GNM -> G. N. M., etc.)', async () => {
+  function normalizeCollegeName(col, crs) {
+    if (!col) {
+      if (crs === 'B. A. M. S.') return 'AMAMCHRC (BAMS)';
+      if (crs === 'B. H. M. S.') return 'AMHMCH (BHMS)';
+      if (crs === 'G. N. M.') return 'AMSON (GNM)';
+      if (crs === 'B. SC. NURSING') return 'AMCON (B. SC. NURSING)';
+      return '';
+    }
+    var c = col.toString().trim();
+    var l = c.toLowerCase();
+    if (l === 'bams' || l === 'amamchrc' || l === 'amamchrc (bams)' || l.indexOf('bams') !== -1) return 'AMAMCHRC (BAMS)';
+    if (l === 'bhms' || l === 'amhmch' || l === 'amhmch (bhms)' || l.indexOf('bhms') !== -1) return 'AMHMCH (BHMS)';
+    if (l === 'amson' || l.indexOf('amson') !== -1) return 'AMSON (GNM)';
+    if (l === 'mvmin' || l.indexOf('mvmin') !== -1) return 'MVMIN (GNM)';
+    if (l === 'amcon' || l.indexOf('nursing') !== -1) return 'AMCON (B. SC. NURSING)';
+    if (l === 'amcp') return 'AMCP';
+    if (l === 'amip' || l === 'ambap' || l.indexOf('amip') !== -1 || l.indexOf('ambap') !== -1) return 'AMIP AMBAP (PHARMACY)';
+    if (l === 'wcop' || l.indexOf('wcop') !== -1) return 'WCOP (PHARMACY)';
+    if (l === 'ampv' || l.indexOf('polytechnic') !== -1 || l.indexOf('ampv') !== -1) return 'AMPV (DIPLOMA)';
+    if (l === 'amgoi' || l.indexOf('amgoi') !== -1 || l.indexOf('engineering') !== -1) return 'AMGOI';
+    return c;
+  }
+
+  function normalizeCourseName(crs, colName) {
+    if (!crs) return '';
+    var s = crs.toString().trim();
+    var l = s.toLowerCase();
+    
+    if (l === 'bams' || l === 'b.a.m.s.' || l === 'b. a. m. s.' || l === 'b.a.m.s' || l === 'b a m s' || l.indexOf('bams') !== -1 || l.indexOf('ayurved') !== -1) {
+      return 'B. A. M. S.';
+    }
+    if (l === 'bhms' || l === 'b.h.m.s.' || l === 'b. h. m. s.' || l === 'b.h.m.s' || l === 'b h m s' || l.indexOf('bhms') !== -1 || l.indexOf('homeopath') !== -1) {
+      return 'B. H. M. S.';
+    }
+    if (l === 'gnm' || l === 'g.n.m.' || l === 'g. n. m.' || l === 'g.n.m' || l === 'g n m' || l.indexOf('gnm') !== -1) {
+      return 'G. N. M.';
+    }
+    if (l.indexOf('nurs') !== -1 || l === 'b.sc. nursing' || l === 'b. sc. nursing' || l === 'bsc nursing') {
+      return 'B. SC. NURSING';
+    }
+    if (l === 'b.pharmacy' || l === 'b pharmacy' || l === 'b.pharm' || l === 'b pharm' || l === 'b. pharmacy' || l === 'b. pharm.') {
+      return 'B. PHARMACY';
+    }
+    if (l === 'd.pharmacy' || l === 'd pharmacy' || l === 'd.pharm' || l === 'd pharm' || l === 'd. pharmacy' || l === 'd. pharm.') {
+      return 'D. PHARMACY';
+    }
+    if (l === 'm.pharmacy' || l === 'm pharmacy' || l === 'm.pharm' || l === 'm pharm' || l === 'm. pharmacy' || l === 'm. pharm.') {
+      return 'M. PHARMACY';
+    }
+    if (l.indexOf('electronics') !== -1 && l.indexOf('computer') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN ELECTRONICS & COMPUTER ENGINEERING';
+      return 'B. TECH. ELECTRONICS AND COMPUTER ENGINEERING';
+    }
+    if (l.indexOf('telecom') !== -1 || l.indexOf('entc') !== -1 || l.indexOf('e&tc') !== -1 || (l.indexOf('electronics') !== -1 && l.indexOf('telecommunication') !== -1)) {
+      if (l.indexOf('m. tech') !== -1 || l.indexOf('m.tech') !== -1) return 'M. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING';
+      return 'B. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING';
+    }
+    if (l.indexOf('data science') !== -1 || l.indexOf('ai & ds') !== -1 || l.indexOf('ai and data science') !== -1 || l.indexOf('(ai) and data science') !== -1 || l.indexOf('(ai)  and data science') !== -1) {
+      return 'B. TECH. ARTIFICIAL INTELLIGENCE (AI) AND DATA SCIENCE';
+    }
+    if (l.indexOf('machine learning') !== -1 || l.indexOf('aiml') !== -1 || l.indexOf('ai & ml') !== -1 || l.indexOf('ai and machine learning') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN AIML';
+      return 'B. TECH. ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING';
+    }
+    if (l.indexOf('computer') !== -1 || l.indexOf('cse') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN COMPUTER ENGINEERING';
+      if (l.indexOf('m. tech') !== -1 || l.indexOf('m.tech') !== -1) return 'M. TECH. COMPUTER SCIENCE AND ENGINEERING';
+      return 'B. TECH. COMPUTER SCIENCE AND ENGINEERING';
+    }
+    if (l.indexOf('civil') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN CIVIL ENGINEERING';
+      return 'B. TECH. CIVIL ENGINEERING';
+    }
+    if (l.indexOf('electrical') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN ELECTRICAL';
+      return 'B. TECH. ELECTRICAL ENGINEERING';
+    }
+    if (l.indexOf('mechanical') !== -1) {
+      if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN MECHANICAL ENGINEERING';
+      if (l.indexOf('design') !== -1) return 'M. TECH. MECHANICAL ENGINEERING DESIGN';
+      if (l.indexOf('production') !== -1) return 'M. TECH. MECHANICAL ENGINEERING (PRODUCTION)';
+      return 'B. TECH. MECHANICAL ENGINEERING';
+    }
+    if (l === 'mba' || l.indexOf('business administration') !== -1) {
+      return 'MBA';
+    }
+
+    return s;
+  }
+
+  // BAMS normalization
+  assert.equal(normalizeCourseName('Bams'), 'B. A. M. S.');
+  assert.equal(normalizeCourseName('bams'), 'B. A. M. S.');
+  assert.equal(normalizeCourseName('BAMS'), 'B. A. M. S.');
+  assert.equal(normalizeCourseName('B.A.M.S.'), 'B. A. M. S.');
+  assert.equal(normalizeCollegeName('BAMS'), 'AMAMCHRC (BAMS)');
+
+  // BHMS normalization
+  assert.equal(normalizeCourseName('Bhms'), 'B. H. M. S.');
+  assert.equal(normalizeCourseName('BHMS'), 'B. H. M. S.');
+  assert.equal(normalizeCollegeName('BHMS'), 'AMHMCH (BHMS)');
+
+  // GNM normalization
+  assert.equal(normalizeCourseName('GNM'), 'G. N. M.');
+  assert.equal(normalizeCourseName('gnm'), 'G. N. M.');
+
+  // Computer Science normalization
+  assert.equal(normalizeCourseName('Computer science and Engineering'), 'B. TECH. COMPUTER SCIENCE AND ENGINEERING');
+  assert.equal(normalizeCourseName('B. TECH. ELECTRONICS AND COMPUTER ENGINEERING'), 'B. TECH. ELECTRONICS AND COMPUTER ENGINEERING');
+});
+

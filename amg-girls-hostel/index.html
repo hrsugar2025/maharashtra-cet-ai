@@ -4333,6 +4333,98 @@ function getNormalizedAppId(id) {
   return s ? ("APP-" + s) : id;
 }
 
+function normalizeCollegeName(col, crs) {
+  if (!col) {
+    if (crs === 'B. A. M. S.') return 'AMAMCHRC (BAMS)';
+    if (crs === 'B. H. M. S.') return 'AMHMCH (BHMS)';
+    if (crs === 'G. N. M.') return 'AMSON (GNM)';
+    if (crs === 'B. SC. NURSING') return 'AMCON (B. SC. NURSING)';
+    return '';
+  }
+  var c = col.toString().trim();
+  var l = c.toLowerCase();
+  if (l === 'bams' || l === 'amamchrc' || l === 'amamchrc (bams)' || l.indexOf('bams') !== -1) return 'AMAMCHRC (BAMS)';
+  if (l === 'bhms' || l === 'amhmch' || l === 'amhmch (bhms)' || l.indexOf('bhms') !== -1) return 'AMHMCH (BHMS)';
+  if (l === 'amson' || l.indexOf('amson') !== -1) return 'AMSON (GNM)';
+  if (l === 'mvmin' || l.indexOf('mvmin') !== -1) return 'MVMIN (GNM)';
+  if (l === 'amcon' || l.indexOf('nursing') !== -1) return 'AMCON (B. SC. NURSING)';
+  if (l === 'amcp') return 'AMCP';
+  if (l === 'amip' || l === 'ambap' || l.indexOf('amip') !== -1 || l.indexOf('ambap') !== -1) return 'AMIP AMBAP (PHARMACY)';
+  if (l === 'wcop' || l.indexOf('wcop') !== -1) return 'WCOP (PHARMACY)';
+  if (l === 'ampv' || l.indexOf('polytechnic') !== -1 || l.indexOf('ampv') !== -1) return 'AMPV (DIPLOMA)';
+  if (l === 'amgoi' || l.indexOf('amgoi') !== -1 || l.indexOf('engineering') !== -1) return 'AMGOI';
+  return c;
+}
+window.normalizeCollegeName = normalizeCollegeName;
+
+function normalizeCourseName(crs, colName) {
+  if (!crs) return '';
+  var s = crs.toString().trim();
+  var l = s.toLowerCase();
+  
+  if (l === 'bams' || l === 'b.a.m.s.' || l === 'b. a. m. s.' || l === 'b.a.m.s' || l === 'b a m s' || l.indexOf('bams') !== -1 || l.indexOf('ayurved') !== -1) {
+    return 'B. A. M. S.';
+  }
+  if (l === 'bhms' || l === 'b.h.m.s.' || l === 'b. h. m. s.' || l === 'b.h.m.s' || l === 'b h m s' || l.indexOf('bhms') !== -1 || l.indexOf('homeopath') !== -1) {
+    return 'B. H. M. S.';
+  }
+  if (l === 'gnm' || l === 'g.n.m.' || l === 'g. n. m.' || l === 'g.n.m' || l === 'g n m' || l.indexOf('gnm') !== -1) {
+    return 'G. N. M.';
+  }
+  if (l.indexOf('nurs') !== -1 || l === 'b.sc. nursing' || l === 'b. sc. nursing' || l === 'bsc nursing') {
+    return 'B. SC. NURSING';
+  }
+  if (l === 'b.pharmacy' || l === 'b pharmacy' || l === 'b.pharm' || l === 'b pharm' || l === 'b. pharmacy' || l === 'b. pharm.') {
+    return 'B. PHARMACY';
+  }
+  if (l === 'd.pharmacy' || l === 'd pharmacy' || l === 'd.pharm' || l === 'd pharm' || l === 'd. pharmacy' || l === 'd. pharm.') {
+    return 'D. PHARMACY';
+  }
+  if (l === 'm.pharmacy' || l === 'm pharmacy' || l === 'm.pharm' || l === 'm pharm' || l === 'm. pharmacy' || l === 'm. pharm.') {
+    return 'M. PHARMACY';
+  }
+  if (l.indexOf('electronics') !== -1 && l.indexOf('computer') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN ELECTRONICS & COMPUTER ENGINEERING';
+    return 'B. TECH. ELECTRONICS AND COMPUTER ENGINEERING';
+  }
+  if (l.indexOf('telecom') !== -1 || l.indexOf('entc') !== -1 || l.indexOf('e&tc') !== -1 || (l.indexOf('electronics') !== -1 && l.indexOf('telecommunication') !== -1)) {
+    if (l.indexOf('m. tech') !== -1 || l.indexOf('m.tech') !== -1) return 'M. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING';
+    return 'B. TECH. ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING';
+  }
+  if (l.indexOf('data science') !== -1 || l.indexOf('ai & ds') !== -1 || l.indexOf('ai and data science') !== -1 || l.indexOf('(ai) and data science') !== -1 || l.indexOf('(ai)  and data science') !== -1) {
+    return 'B. TECH. ARTIFICIAL INTELLIGENCE (AI) AND DATA SCIENCE';
+  }
+  if (l.indexOf('machine learning') !== -1 || l.indexOf('aiml') !== -1 || l.indexOf('ai & ml') !== -1 || l.indexOf('ai and machine learning') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN AIML';
+    return 'B. TECH. ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING';
+  }
+  if (l.indexOf('computer') !== -1 || l.indexOf('cse') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN COMPUTER ENGINEERING';
+    if (l.indexOf('m. tech') !== -1 || l.indexOf('m.tech') !== -1) return 'M. TECH. COMPUTER SCIENCE AND ENGINEERING';
+    return 'B. TECH. COMPUTER SCIENCE AND ENGINEERING';
+  }
+  if (l.indexOf('civil') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN CIVIL ENGINEERING';
+    return 'B. TECH. CIVIL ENGINEERING';
+  }
+  if (l.indexOf('electrical') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN ELECTRICAL';
+    return 'B. TECH. ELECTRICAL ENGINEERING';
+  }
+  if (l.indexOf('mechanical') !== -1) {
+    if (l.indexOf('diploma') !== -1) return 'DIPLOMA IN MECHANICAL ENGINEERING';
+    if (l.indexOf('design') !== -1) return 'M. TECH. MECHANICAL ENGINEERING DESIGN';
+    if (l.indexOf('production') !== -1) return 'M. TECH. MECHANICAL ENGINEERING (PRODUCTION)';
+    return 'B. TECH. MECHANICAL ENGINEERING';
+  }
+  if (l === 'mba' || l.indexOf('business administration') !== -1) {
+    return 'MBA';
+  }
+
+  return s;
+}
+window.normalizeCourseName = normalizeCourseName;
+
 function normalizePaymentMode(modeStr, txnIdStr) {
   var mode = (modeStr || '').toString().trim();
   var txn = (txnIdStr || '').toString().trim();
@@ -5410,9 +5502,9 @@ window.google = {
                     city: s.city || '',
                     state: s.state || '',
                     pincode: s.pincode || '',
-                    course: s.course || '',
+                    course: normalizeCourseName(s.course, s.college_name),
                     yearOfStudy: s.year_of_study || '',
-                    collegeName: s.college_name || '',
+                    collegeName: normalizeCollegeName(s.college_name, s.course),
                     aadharNumber: s.aadhar_number || '',
                     emergencyContactName: s.emergency_contact_name || '',
                     emergencyContactNumber: s.emergency_contact_number || '',
@@ -7470,9 +7562,9 @@ window.google = {
                   address: s.address || '',
                   city: s.city || '',
                   state: s.state || '',
-                  course: s.course || '',
+                  course: normalizeCourseName(s.course, s.college_name),
                   yearOfStudy: s.year_of_study || '',
-                  collegeName: s.college_name || '',
+                  collegeName: normalizeCollegeName(s.college_name, s.course),
                   aadharNumber: s.aadhar_number || '',
                   emergencyContactName: s.emergency_contact_name || '',
                   emergencyContactNumber: s.emergency_contact_number || '',
@@ -7674,16 +7766,29 @@ window.google = {
           },
 
           repairCollegeNamesBamsBhms: function() {
-            Promise.all([
-              _supabase.from('students').update({ college_name: 'AMAMCHRC (BAMS)' }).eq('college_name', 'BAMS'),
-              _supabase.from('students').update({ college_name: 'AMAMCHRC (BAMS)' }).eq('college_name', 'AMAMCHRC'),
-              _supabase.from('students').update({ college_name: 'AMHMCH (BHMS)' }).eq('college_name', 'BHMS'),
-              _supabase.from('students').update({ college_name: 'AMHMCH (BHMS)' }).eq('college_name', 'AMHMCH'),
-              _supabase.from('students').update({ course: 'B. A. M. S.' }).eq('course', 'BAMS'),
-              _supabase.from('students').update({ course: 'B. H. M. S.' }).eq('course', 'BHMS'),
-              _supabase.from('students').update({ course: 'B. TECH. ARTIFICIAL INTELLIGENCE (AI) AND DATA SCIENCE' }).eq('course', 'B. TECH. ARTIFICIAL INTELLIGENCE (AI)  AND DATA SCIENCE')
-            ]).then(function() {
-              successCb({ success: true, message: 'College and course names standardized successfully across student records.' });
+            _supabase.from('students').select('*').then(function(res) {
+              if (res.error) return failureCb(res.error);
+              var students = res.data || [];
+              var updates = [];
+              students.forEach(function(s) {
+                var normCourse = normalizeCourseName(s.course, s.college_name);
+                var normCollege = normalizeCollegeName(s.college_name, normCourse);
+                if (normCourse === 'G. N. M.' && (normCollege === 'AMGOI' || !normCollege)) {
+                  normCollege = 'AMSON (GNM)';
+                }
+                if (normCourse !== s.course || normCollege !== s.college_name) {
+                  updates.push(_supabase.from('students').update({
+                    college_name: normCollege,
+                    course: normCourse
+                  }).eq('app_id', s.app_id));
+                }
+              });
+              if (updates.length === 0) {
+                return successCb({ success: true, message: 'All student records are already standardized!' });
+              }
+              Promise.all(updates).then(function() {
+                successCb({ success: true, message: 'Successfully standardized ' + updates.length + ' student college and course records.' });
+              }).catch(failureCb);
             }).catch(failureCb);
           }
         };
