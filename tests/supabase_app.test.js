@@ -932,3 +932,131 @@ test('20. User Accounts & Admin Credentials Management (Creation, Update, Status
   assert.equal(deletedUser, undefined, 'User should be deleted from table');
 });
 
+test('21. Pending Fees Month & Semester Filter Helper (matchesPendingMonth)', async () => {
+  function matchesPendingMonth(applicableMonth, monthFilter) {
+    if (!monthFilter || monthFilter === 'All') return true;
+    var m = (applicableMonth || '').toString().trim().toLowerCase();
+    var f = monthFilter.toString().trim().toLowerCase();
+    if (!m && !f) return true;
+    if (!m) return false;
+    if (m === f) return true;
+
+    if (f === 'semester 1' || f === 'sem 1' || f === 'sem-1') {
+      return m === 'semester 1' || m.indexOf('semester 1') !== -1 || m.indexOf('sem 1') !== -1 || m.indexOf('sem-1') !== -1;
+    }
+    if (f === 'semester 2' || f === 'sem 2' || f === 'sem-2') {
+      return m === 'semester 2' || m.indexOf('semester 2') !== -1 || m.indexOf('sem 2') !== -1 || m.indexOf('sem-2') !== -1;
+    }
+    if (f === 'on joining' || f === 'joining') {
+      return m.indexOf('joining') !== -1;
+    }
+
+    // Exact substring match
+    if (m.indexOf(f) !== -1 || f.indexOf(m) !== -1) {
+      return true;
+    }
+
+    // Month prefix match (e.g. Feb vs February)
+    var shortMonths = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    var longMonths = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    for (var i = 0; i < 12; i++) {
+      if (f === longMonths[i] || f === shortMonths[i]) {
+        if (m.indexOf(longMonths[i]) !== -1 || m.indexOf(shortMonths[i]) !== -1) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  // All matches everything
+  assert.equal(matchesPendingMonth('Semester 1', 'All'), true);
+  assert.equal(matchesPendingMonth('Semester 2 (Feb 2027)', 'All'), true);
+
+  // Semester 1 filter
+  assert.equal(matchesPendingMonth('Semester 1', 'Semester 1'), true);
+  assert.equal(matchesPendingMonth('Semester 1 (Aug 2026)', 'Semester 1'), true);
+  assert.equal(matchesPendingMonth('Semester 2 (Feb 2027)', 'Semester 1'), false);
+  assert.equal(matchesPendingMonth('On Joining', 'Semester 1'), false);
+
+  // Semester 2 filter
+  assert.equal(matchesPendingMonth('Semester 2 (Feb 2027)', 'Semester 2'), true);
+  assert.equal(matchesPendingMonth('Semester 2', 'Semester 2'), true);
+  assert.equal(matchesPendingMonth('Semester 1', 'Semester 2'), false);
+
+  // On Joining filter
+  assert.equal(matchesPendingMonth('On Joining', 'On Joining'), true);
+  assert.equal(matchesPendingMonth('Semester 1', 'On Joining'), false);
+
+  // Calendar month filter
+  assert.equal(matchesPendingMonth('Semester 2 (Feb 2027)', 'February'), true);
+  assert.equal(matchesPendingMonth('July', 'July'), true);
+});
+
+test('22. Pending Fees Dataset Filtering Semester 1 vs Semester 2 Wise', async () => {
+  function matchesPendingMonth(applicableMonth, monthFilter) {
+    if (!monthFilter || monthFilter === 'All') return true;
+    var m = (applicableMonth || '').toString().trim().toLowerCase();
+    var f = monthFilter.toString().trim().toLowerCase();
+    if (!m && !f) return true;
+    if (!m) return false;
+    if (m === f) return true;
+
+    if (f === 'semester 1' || f === 'sem 1' || f === 'sem-1') {
+      return m === 'semester 1' || m.indexOf('semester 1') !== -1 || m.indexOf('sem 1') !== -1 || m.indexOf('sem-1') !== -1;
+    }
+    if (f === 'semester 2' || f === 'sem 2' || f === 'sem-2') {
+      return m === 'semester 2' || m.indexOf('semester 2') !== -1 || m.indexOf('sem 2') !== -1 || m.indexOf('sem-2') !== -1;
+    }
+    if (f === 'on joining' || f === 'joining') {
+      return m.indexOf('joining') !== -1;
+    }
+
+    if (m.indexOf(f) !== -1 || f.indexOf(m) !== -1) {
+      return true;
+    }
+
+    var shortMonths = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    var longMonths = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    for (var i = 0; i < 12; i++) {
+      if (f === longMonths[i] || f === shortMonths[i]) {
+        if (m.indexOf(longMonths[i]) !== -1 || m.indexOf(shortMonths[i]) !== -1) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  const samplePendingFees = [
+    { ledgerId: 'LDG-001', studentName: 'Pooja Patil', headName: 'Security Deposit', applicableMonth: 'On Joining', balance: 5000 },
+    { ledgerId: 'LDG-002', studentName: 'Pooja Patil', headName: 'Hostel Fee', applicableMonth: 'Semester 1', balance: 25000 },
+    { ledgerId: 'LDG-003', studentName: 'Pooja Patil', headName: 'Hostel Fee', applicableMonth: 'Semester 2 (Feb 2027)', balance: 25000 },
+    { ledgerId: 'LDG-004', studentName: 'Sneha More', headName: 'Mess Fee', applicableMonth: 'Semester 1', balance: 15000 },
+    { ledgerId: 'LDG-005', studentName: 'Sneha More', headName: 'Mess Fee', applicableMonth: 'Semester 2 (Feb 2027)', balance: 15000 }
+  ];
+
+  // Filter Semester 1
+  const sem1List = samplePendingFees.filter(e => matchesPendingMonth(e.applicableMonth, 'Semester 1'));
+  assert.equal(sem1List.length, 2);
+  assert.equal(sem1List[0].ledgerId, 'LDG-002');
+  assert.equal(sem1List[1].ledgerId, 'LDG-004');
+
+  // Filter Semester 2
+  const sem2List = samplePendingFees.filter(e => matchesPendingMonth(e.applicableMonth, 'Semester 2'));
+  assert.equal(sem2List.length, 2);
+  assert.equal(sem2List[0].ledgerId, 'LDG-003');
+  assert.equal(sem2List[1].ledgerId, 'LDG-005');
+
+  // Filter On Joining
+  const joiningList = samplePendingFees.filter(e => matchesPendingMonth(e.applicableMonth, 'On Joining'));
+  assert.equal(joiningList.length, 1);
+  assert.equal(joiningList[0].ledgerId, 'LDG-001');
+
+  // Filter All
+  const allList = samplePendingFees.filter(e => matchesPendingMonth(e.applicableMonth, 'All'));
+  assert.equal(allList.length, 5);
+});
+

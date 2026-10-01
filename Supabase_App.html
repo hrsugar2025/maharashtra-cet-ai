@@ -1748,20 +1748,27 @@ if (typeof window.google.script.run === 'undefined') {
             <select id="pf-filter-head" class="form-select" style="max-width:160px;" onchange="renderPendingFees()" title="Filter by Fee Head">
               <option value="All">All Fee Heads</option>
             </select>
-            <select id="pf-filter-month" class="form-select" style="max-width:140px;" onchange="renderPendingFees()" title="Filter by Month">
-              <option value="All">All Months</option>
-              <option>January</option>
-              <option>February</option>
-              <option>March</option>
-              <option>April</option>
-              <option>May</option>
-              <option>June</option>
-              <option>July</option>
-              <option>August</option>
-              <option>September</option>
-              <option>October</option>
-              <option>November</option>
-              <option>December</option>
+            <select id="pf-filter-month" class="form-select" style="max-width:160px;" onchange="renderPendingFees()" title="Filter by Month / Semester">
+              <option value="All">All Months / Semesters</option>
+              <optgroup label="Semesters &amp; Terms">
+                <option value="Semester 1">Semester 1</option>
+                <option value="Semester 2">Semester 2</option>
+                <option value="On Joining">On Joining</option>
+              </optgroup>
+              <optgroup label="Calendar Months">
+                <option>January</option>
+                <option>February</option>
+                <option>March</option>
+                <option>April</option>
+                <option>May</option>
+                <option>June</option>
+                <option>July</option>
+                <option>August</option>
+                <option>September</option>
+                <option>October</option>
+                <option>November</option>
+                <option>December</option>
+              </optgroup>
             </select>
             <select id="pf-status" class="form-select" style="max-width:160px;" onchange="loadPendingFees()">
               <option value="Pending">Pending &amp; Partial</option>
@@ -11664,8 +11671,105 @@ function populatePendingFeesFilterDropdowns() {
     }
   }
 
-  // 3. Update courses based on college
+  // 3. Month / Semester dropdown
+  var monthSel = document.getElementById('pf-filter-month');
+  if (monthSel) {
+    var curMonth = monthSel.value || 'All';
+    var monthSet = {};
+
+    var defaultMonthOptions = [
+      'Semester 1',
+      'Semester 2',
+      'On Joining',
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    (allPendingFees || []).forEach(function(e) {
+      var m = (e.applicableMonth || '').toString().trim();
+      if (m && m !== '-' && m.toLowerCase() !== 'n/a') monthSet[m] = true;
+    });
+
+    var monthHtml = '<option value="All">All Months / Semesters</option>';
+
+    monthHtml += '<optgroup label="Semesters &amp; Terms">';
+    monthHtml += '<option value="Semester 1">Semester 1</option>';
+    monthHtml += '<option value="Semester 2">Semester 2</option>';
+    monthHtml += '<option value="On Joining">On Joining</option>';
+    monthHtml += '</optgroup>';
+
+    var extraMonths = Object.keys(monthSet).filter(function(m) {
+      var ml = m.toLowerCase();
+      if (ml === 'semester 1' || ml === 'semester 2' || ml === 'on joining') return false;
+      var isCalMonth = ['january','february','march','april','may','june','july','august','september','october','november','december'].some(function(cm) {
+        return cm === ml;
+      });
+      return !isCalMonth;
+    }).sort(function(a, b) {
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+
+    if (extraMonths.length > 0) {
+      monthHtml += '<optgroup label="Recorded In Ledger">';
+      extraMonths.forEach(function(m) {
+        monthHtml += '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>';
+      });
+      monthHtml += '</optgroup>';
+    }
+
+    monthHtml += '<optgroup label="Calendar Months">';
+    ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].forEach(function(m) {
+      monthHtml += '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>';
+    });
+    monthHtml += '</optgroup>';
+
+    monthSel.innerHTML = monthHtml;
+    if (curMonth && (curMonth === 'All' || monthSet[curMonth] || defaultMonthOptions.indexOf(curMonth) !== -1)) {
+      monthSel.value = curMonth;
+    } else {
+      monthSel.value = 'All';
+    }
+  }
+
+  // 4. Update courses based on college
   onPfCollegeChange(true);
+}
+
+function matchesPendingMonth(applicableMonth, monthFilter) {
+  if (!monthFilter || monthFilter === 'All') return true;
+  var m = (applicableMonth || '').toString().trim().toLowerCase();
+  var f = monthFilter.toString().trim().toLowerCase();
+  if (!m && !f) return true;
+  if (!m) return false;
+  if (m === f) return true;
+
+  if (f === 'semester 1' || f === 'sem 1' || f === 'sem-1') {
+    return m === 'semester 1' || m.indexOf('semester 1') !== -1 || m.indexOf('sem 1') !== -1 || m.indexOf('sem-1') !== -1;
+  }
+  if (f === 'semester 2' || f === 'sem 2' || f === 'sem-2') {
+    return m === 'semester 2' || m.indexOf('semester 2') !== -1 || m.indexOf('sem 2') !== -1 || m.indexOf('sem-2') !== -1;
+  }
+  if (f === 'on joining' || f === 'joining') {
+    return m.indexOf('joining') !== -1;
+  }
+
+  // Exact substring match
+  if (m.indexOf(f) !== -1 || f.indexOf(m) !== -1) {
+    return true;
+  }
+
+  // Month prefix match (e.g. Feb vs February)
+  var shortMonths = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  var longMonths = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  for (var i = 0; i < 12; i++) {
+    if (f === longMonths[i] || f === shortMonths[i]) {
+      if (m.indexOf(longMonths[i]) !== -1 || m.indexOf(shortMonths[i]) !== -1) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function onPfCollegeChange(skipRender) {
@@ -11813,8 +11917,7 @@ function renderPendingFees(){
       if (hName.toLowerCase() !== headFilter.toLowerCase()) return false;
     }
     if (monthFilter !== 'All') {
-      var m = (e.applicableMonth || '').toString().trim();
-      if (m.toLowerCase() !== monthFilter.toLowerCase()) return false;
+      if (!matchesPendingMonth(e.applicableMonth, monthFilter)) return false;
     }
     return true;
   });
@@ -11939,8 +12042,7 @@ function exportPendingFeesToExcel() {
       if (hName.toLowerCase() !== headFilter.toLowerCase()) return false;
     }
     if (monthFilter !== 'All') {
-      var m = (e.applicableMonth || '').toString().trim();
-      if (m.toLowerCase() !== monthFilter.toLowerCase()) return false;
+      if (!matchesPendingMonth(e.applicableMonth, monthFilter)) return false;
     }
     return true;
   });
@@ -18130,8 +18232,7 @@ function printReport(reportType) {
         if (hName.toLowerCase() !== headFilter.toLowerCase()) return false;
       }
       if (monthFilter !== 'All') {
-        var m = (e.applicableMonth || '').toString().trim();
-        if (m.toLowerCase() !== monthFilter.toLowerCase()) return false;
+        if (!matchesPendingMonth(e.applicableMonth, monthFilter)) return false;
       }
       return true;
     });
