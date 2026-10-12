@@ -1867,7 +1867,7 @@ if (typeof window.google.script.run === 'undefined') {
                     <span class="material-icons-round" style="font-size:14px;vertical-align:middle;margin-right:2px;">settings</span> Manage Fee Types
                   </button>
                 </div>
-                <select id="fee-type" class="form-select">
+                <select id="fee-type" class="form-select" onchange="onManualFeeTypeChange()">
                   <option value="">Select Type</option>
                   <option>Hostel Fee</option>
                   <option>Mess Fee</option>
@@ -3780,9 +3780,10 @@ if (typeof window.google.script.run === 'undefined') {
     </div>
     <div class="modal-body">
       <!-- Add form -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <input type="text" id="new-mft-name" class="form-input" placeholder="e.g. Hostel Linen Charges" style="flex:1;" onkeydown="if(event.key==='Enter')doAddManualFeeType()"/>
-        <button class="btn btn-primary" id="btn-add-mft" onclick="doAddManualFeeType()">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <input type="text" id="new-mft-name" class="form-input" placeholder="Fee Type Name (e.g. Brochure Fee)" style="flex:2;min-width:180px;" onkeydown="if(event.key==='Enter')doAddManualFeeType()"/>
+        <input type="number" id="new-mft-amount" class="form-input" placeholder="Default &#8377; (optional)" style="flex:1;min-width:130px;" min="0" step="any" onkeydown="if(event.key==='Enter')doAddManualFeeType()"/>
+        <button class="btn btn-primary" id="btn-add-mft" onclick="doAddManualFeeType()" style="white-space:nowrap;">
           <span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:2px;">add</span> Add
         </button>
       </div>
@@ -3796,19 +3797,53 @@ if (typeof window.google.script.run === 'undefined') {
         <table>
           <thead>
             <tr>
-              <th style="width:40px;text-align:center;">#</th>
+              <th style="width:36px;text-align:center;">#</th>
               <th>Fee Type Name</th>
-              <th style="width:90px;text-align:right;">Actions</th>
+              <th style="width:115px;text-align:right;">Default &#8377;</th>
+              <th style="width:85px;text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody id="mft-tbody">
-            <tr><td colspan="3" style="text-align:center;padding:16px;">Loading...</td></tr>
+            <tr><td colspan="4" style="text-align:center;padding:16px;">Loading...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-manage-fee-types')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MANUAL FEE TYPE MODAL -->
+<div id="modal-edit-manual-fee-type" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-edit-manual-fee-type')">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">✏️ Edit Fee Type</div>
+        <div style="font-size:0.78rem;color:var(--text2);margin-top:2px;">Update fee type name and default amount</div>
+      </div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-edit-manual-fee-type')">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-mft-old-name"/>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label">Fee Type Name *</label>
+        <input type="text" id="edit-mft-name" class="form-input" placeholder="e.g. Information Brochure & Application Form Fee" onkeydown="if(event.key==='Enter')doSaveEditManualFeeType()"/>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Default Amount (&#8377;)</label>
+        <input type="number" id="edit-mft-amount" class="form-input" placeholder="0.00" min="0" step="any" onkeydown="if(event.key==='Enter')doSaveEditManualFeeType()"/>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:4px;">When selected in manual receipt, this amount will pre-fill automatically and remain editable.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-manual-fee-type')">Cancel</button>
+      <button class="btn btn-primary" id="btn-save-edit-mft" onclick="doSaveEditManualFeeType()">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:2px;">check</span> Save Changes
+      </button>
     </div>
   </div>
 </div>
@@ -4689,12 +4724,26 @@ window.google = {
                 roomTypes: roomTypes,
                 feeStructures: feeStructures,
                 manualFeeTypes: (function(){
-                  var defaultMft = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+                  var defaultMft = [
+                    { name: 'Hostel Fee', defaultAmount: 0 },
+                    { name: 'Mess Fee', defaultAmount: 0 },
+                    { name: 'Security Deposit', defaultAmount: 0 },
+                    { name: 'Hostel Linen Charges', defaultAmount: 0 },
+                    { name: 'Other Fee', defaultAmount: 0 }
+                  ];
                   var resList = defaultMft.slice();
                   if (sMap && sMap.MANUAL_FEE_TYPES) {
                     try {
                       var parsedMft = JSON.parse(sMap.MANUAL_FEE_TYPES);
-                      if (Array.isArray(parsedMft) && parsedMft.length > 0) resList = parsedMft;
+                      if (Array.isArray(parsedMft) && parsedMft.length > 0) {
+                        resList = parsedMft.map(function(item) {
+                          if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+                          return {
+                            name: (item.name || item.typeName || '').toString().trim(),
+                            defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+                          };
+                        }).filter(function(x) { return x.name; });
+                      }
                     } catch(e) {}
                   }
                   try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(resList)); } catch(e) {}
@@ -6201,10 +6250,25 @@ window.google = {
           },
 
           // ── MANUAL FEE TYPES ────────────────────────────────────
-          saveManualFeeType: function(newType) {
-            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
-            var cleanType = (newType || '').toString().trim();
-            if (!cleanType) {
+          saveManualFeeType: function(newType, defaultAmount) {
+            var defaultTypes = [
+              { name: 'Hostel Fee', defaultAmount: 0 },
+              { name: 'Mess Fee', defaultAmount: 0 },
+              { name: 'Security Deposit', defaultAmount: 0 },
+              { name: 'Hostel Linen Charges', defaultAmount: 0 },
+              { name: 'Other Fee', defaultAmount: 0 }
+            ];
+            var typeName = '';
+            var typeAmt = 0;
+            if (typeof newType === 'object' && newType !== null) {
+              typeName = (newType.name || newType.typeName || '').toString().trim();
+              typeAmt = parseFloat(newType.defaultAmount !== undefined ? newType.defaultAmount : defaultAmount) || 0;
+            } else {
+              typeName = (newType || '').toString().trim();
+              typeAmt = parseFloat(defaultAmount) || 0;
+            }
+
+            if (!typeName) {
               return successCb({ success: false, message: 'Fee type name cannot be empty.' });
             }
 
@@ -6213,16 +6277,24 @@ window.google = {
               if (res.data && res.data[0] && res.data[0].value) {
                 try {
                   var parsed = JSON.parse(res.data[0].value);
-                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    list = parsed.map(function(item) {
+                      if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+                      return {
+                        name: (item.name || item.typeName || '').toString().trim(),
+                        defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+                      };
+                    }).filter(function(x) { return x.name; });
+                  }
                 } catch(e) {}
               }
 
-              var exists = list.some(function(t) { return t.toLowerCase() === cleanType.toLowerCase(); });
+              var exists = list.some(function(t) { return t.name.toLowerCase() === typeName.toLowerCase(); });
               if (exists) {
-                return successCb({ success: false, message: 'Fee type "' + cleanType + '" already exists.', data: list });
+                return successCb({ success: false, message: 'Fee type "' + typeName + '" already exists.', data: list });
               }
 
-              list.push(cleanType);
+              list.push({ name: typeName, defaultAmount: typeAmt });
               try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
 
               _supabase.from('hostel_settings').upsert([{
@@ -6243,8 +6315,8 @@ window.google = {
                   if (Array.isArray(p) && p.length > 0) list = p;
                 }
               } catch(e) {}
-              if (!list.some(function(t) { return t.toLowerCase() === cleanType.toLowerCase(); })) {
-                list.push(cleanType);
+              if (!list.some(function(t) { return t.name.toLowerCase() === typeName.toLowerCase(); })) {
+                list.push({ name: typeName, defaultAmount: typeAmt });
               }
               try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
               _supabase.from('hostel_settings').upsert([{
@@ -6258,10 +6330,20 @@ window.google = {
             });
           },
 
-          updateManualFeeType: function(oldType, newType) {
-            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+          updateManualFeeType: function(oldType, newType, newAmount) {
+            var defaultTypes = [
+              { name: 'Hostel Fee', defaultAmount: 0 },
+              { name: 'Mess Fee', defaultAmount: 0 },
+              { name: 'Security Deposit', defaultAmount: 0 },
+              { name: 'Hostel Linen Charges', defaultAmount: 0 },
+              { name: 'Other Fee', defaultAmount: 0 }
+            ];
             var cleanOld = (oldType || '').toString().trim();
-            var cleanNew = (newType || '').toString().trim();
+            var cleanNew = (typeof newType === 'object' && newType !== null ? (newType.name || '') : (newType || '')).toString().trim();
+            var updatedAmt = (typeof newType === 'object' && newType !== null && newType.defaultAmount !== undefined)
+              ? parseFloat(newType.defaultAmount) || 0
+              : (newAmount !== undefined && newAmount !== null ? parseFloat(newAmount) || 0 : null);
+
             if (!cleanOld || !cleanNew) {
               return successCb({ success: false, message: 'Both old and new fee type names are required.' });
             }
@@ -6271,33 +6353,38 @@ window.google = {
               if (res.data && res.data[0] && res.data[0].value) {
                 try {
                   var parsed = JSON.parse(res.data[0].value);
-                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    list = parsed.map(function(item) {
+                      if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+                      return {
+                        name: (item.name || item.typeName || '').toString().trim(),
+                        defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+                      };
+                    }).filter(function(x) { return x.name; });
+                  }
                 } catch(e) {}
               }
 
-              if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+              if (cleanOld.toLowerCase() === cleanNew.toLowerCase() && (updatedAmt === null || isNaN(updatedAmt))) {
                 return successCb({ success: true, data: list });
               }
 
               var clash = list.some(function(t) {
-                return t.toLowerCase() === cleanNew.toLowerCase() && t.toLowerCase() !== cleanOld.toLowerCase();
+                return t.name.toLowerCase() === cleanNew.toLowerCase() && t.name.toLowerCase() !== cleanOld.toLowerCase();
               });
               if (clash) {
                 return successCb({ success: false, message: 'Fee type "' + cleanNew + '" already exists.', data: list });
               }
 
-              var idx = -1;
-              for (var i = 0; i < list.length; i++) {
-                if (list[i].toLowerCase() === cleanOld.toLowerCase()) {
-                  idx = i;
-                  break;
-                }
-              }
+              var idx = list.findIndex(function(t) {
+                return t.name.toLowerCase() === cleanOld.toLowerCase();
+              });
               if (idx === -1) {
                 return successCb({ success: false, message: 'Fee type "' + cleanOld + '" not found.', data: list });
               }
 
-              list[idx] = cleanNew;
+              var finalAmt = (updatedAmt !== null && !isNaN(updatedAmt)) ? updatedAmt : list[idx].defaultAmount;
+              list[idx] = { name: cleanNew, defaultAmount: finalAmt };
               try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
 
               _supabase.from('hostel_settings').upsert([{
@@ -6314,7 +6401,13 @@ window.google = {
           },
 
           deleteManualFeeType: function(typeName) {
-            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+            var defaultTypes = [
+              { name: 'Hostel Fee', defaultAmount: 0 },
+              { name: 'Mess Fee', defaultAmount: 0 },
+              { name: 'Security Deposit', defaultAmount: 0 },
+              { name: 'Hostel Linen Charges', defaultAmount: 0 },
+              { name: 'Other Fee', defaultAmount: 0 }
+            ];
             var cleanType = (typeName || '').toString().trim();
             if (!cleanType) {
               return successCb({ success: false, message: 'Fee type name cannot be empty.' });
@@ -6325,12 +6418,20 @@ window.google = {
               if (res.data && res.data[0] && res.data[0].value) {
                 try {
                   var parsed = JSON.parse(res.data[0].value);
-                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    list = parsed.map(function(item) {
+                      if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+                      return {
+                        name: (item.name || item.typeName || '').toString().trim(),
+                        defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+                      };
+                    }).filter(function(x) { return x.name; });
+                  }
                 } catch(e) {}
               }
 
               var filtered = list.filter(function(t) {
-                return t.toLowerCase() !== cleanType.toLowerCase();
+                return t.name.toLowerCase() !== cleanType.toLowerCase();
               });
 
               if (filtered.length === list.length) {
@@ -6779,13 +6880,27 @@ window.google = {
           },
 
           getManualFeeTypes: function() {
-            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+            var defaultTypes = [
+              { name: 'Hostel Fee', defaultAmount: 0 },
+              { name: 'Mess Fee', defaultAmount: 0 },
+              { name: 'Security Deposit', defaultAmount: 0 },
+              { name: 'Hostel Linen Charges', defaultAmount: 0 },
+              { name: 'Other Fee', defaultAmount: 0 }
+            ];
             _supabase.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES').then(function(res) {
               var list = defaultTypes.slice();
               if (res.data && res.data[0] && res.data[0].value) {
                 try {
                   var parsed = JSON.parse(res.data[0].value);
-                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    list = parsed.map(function(item) {
+                      if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+                      return {
+                        name: (item.name || item.typeName || '').toString().trim(),
+                        defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+                      };
+                    }).filter(function(x) { return x.name; });
+                  }
                 } catch(e) {}
               }
               try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
@@ -13251,19 +13366,34 @@ function renderFeeReceipts(){
 }
 
 // ── MANUAL FEE TYPES MANAGEMENT (Admin Configurable) ─────────
+function normalizeManualFeeType(item){
+  if(!item) return null;
+  if(typeof item === 'string'){
+    return { name: item.trim(), defaultAmount: 0 };
+  }
+  if(typeof item === 'object'){
+    var name = (item.name || item.typeName || item.title || '').toString().trim();
+    var amt = parseFloat(item.defaultAmount !== undefined ? item.defaultAmount : (item.amount || 0)) || 0;
+    return { name: name, defaultAmount: amt };
+  }
+  return null;
+}
+
 var allManualFeeTypes = (function(){
   var defaultTypes = [
-    "Hostel Fee",
-    "Mess Fee",
-    "Security Deposit",
-    "Hostel Linen Charges",
-    "Other Fee"
+    { name: "Hostel Fee", defaultAmount: 0 },
+    { name: "Mess Fee", defaultAmount: 0 },
+    { name: "Security Deposit", defaultAmount: 0 },
+    { name: "Hostel Linen Charges", defaultAmount: 0 },
+    { name: "Other Fee", defaultAmount: 0 }
   ];
   try {
     var cached = localStorage.getItem('cached_manual_fee_types');
     if(cached){
       var parsed = JSON.parse(cached);
-      if(Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if(Array.isArray(parsed) && parsed.length > 0){
+        return parsed.map(function(item){ return normalizeManualFeeType(item); }).filter(Boolean);
+      }
     }
   } catch(e){}
   return defaultTypes;
@@ -13272,8 +13402,8 @@ var allManualFeeTypes = (function(){
 function loadManualFeeTypes(callback){
   google.script.run.withSuccessHandler(function(res){
     if(res && res.success && Array.isArray(res.data) && res.data.length){
-      allManualFeeTypes = res.data;
-      try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(res.data)); } catch(e){}
+      allManualFeeTypes = res.data.map(function(item){ return normalizeManualFeeType(item); }).filter(Boolean);
+      try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
     }
     populateFeeTypeDropdown();
     if(typeof callback === 'function') callback();
@@ -13287,8 +13417,11 @@ function populateFeeTypeDropdown(){
   var sel = document.getElementById('fee-type');
   if(!sel) return;
   var currentVal = sel.value;
-  var opts = '<option value="">Select Type</option>' + allManualFeeTypes.map(function(t){
-    return '<option value="' + t + '"' + (t === currentVal ? ' selected' : '') + '>' + t + '</option>';
+  var opts = '<option value="">Select Type</option>' + allManualFeeTypes.map(function(item){
+    var obj = normalizeManualFeeType(item);
+    if(!obj) return '';
+    var amtAttr = obj.defaultAmount > 0 ? ' data-amount="' + obj.defaultAmount + '"' : '';
+    return '<option value="' + escapeHtml(obj.name) + '"' + amtAttr + (obj.name === currentVal ? ' selected' : '') + '>' + escapeHtml(obj.name) + '</option>';
   }).join('');
   sel.innerHTML = opts;
 
@@ -13296,6 +13429,35 @@ function populateFeeTypeDropdown(){
   if(btn){
     var isAdmin = currentUser && (currentUser.role || '').toLowerCase() === 'admin';
     btn.style.display = isAdmin ? 'inline-flex' : 'none';
+  }
+}
+
+function onManualFeeTypeChange(){
+  var sel = document.getElementById('fee-type');
+  var amtInput = document.getElementById('fee-amount');
+  if(!sel || !amtInput) return;
+  var val = sel.value;
+  if(!val) return;
+
+  var opt = sel.options[sel.selectedIndex];
+  var dataAmt = opt ? opt.getAttribute('data-amount') : null;
+  var parsedAmt = (dataAmt !== null && dataAmt !== '') ? parseFloat(dataAmt) : NaN;
+  if(!isNaN(parsedAmt) && parsedAmt > 0){
+    amtInput.value = parsedAmt;
+    amtInput.focus();
+    return;
+  }
+
+  var match = (allManualFeeTypes || []).find(function(item){
+    var obj = normalizeManualFeeType(item);
+    return obj && obj.name.toLowerCase() === val.toLowerCase();
+  });
+  if(match){
+    var obj = normalizeManualFeeType(match);
+    if(obj && obj.defaultAmount > 0){
+      amtInput.value = obj.defaultAmount;
+      amtInput.focus();
+    }
   }
 }
 
@@ -13319,17 +13481,21 @@ function renderManualFeeTypesTable(){
   if(!tbody) return;
 
   if(!allManualFeeTypes || !allManualFeeTypes.length){
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--text3);">No fee types configured.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text3);">No fee types configured.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = allManualFeeTypes.map(function(t, idx){
-    var safeName = t.replace(/'/g, "\\'");
+  tbody.innerHTML = allManualFeeTypes.map(function(item, idx){
+    var obj = normalizeManualFeeType(item);
+    if(!obj) return '';
+    var safeName = obj.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    var amtDisplay = obj.defaultAmount > 0 ? ('&#8377;' + Number(obj.defaultAmount).toLocaleString('en-IN')) : '<span style="color:var(--text3);">&ndash;</span>';
     return '<tr>'
       + '<td style="text-align:center;color:var(--text3);font-size:0.8rem;">' + (idx + 1) + '</td>'
-      + '<td style="font-weight:600;">' + t + '</td>'
+      + '<td style="font-weight:600;">' + escapeHtml(obj.name) + '</td>'
+      + '<td style="text-align:right;font-weight:600;color:var(--text);">' + amtDisplay + '</td>'
       + '<td style="text-align:right;white-space:nowrap;">'
-      + '  <button class="btn btn-ghost btn-sm" onclick="doEditManualFeeType(\'' + safeName + '\')" title="Edit Fee Type"><span class="material-icons-round" style="font-size:15px;">edit</span></button>'
+      + '  <button class="btn btn-ghost btn-sm" onclick="openEditManualFeeTypeModal(\'' + safeName + '\', ' + obj.defaultAmount + ')" title="Edit Fee Type"><span class="material-icons-round" style="font-size:15px;">edit</span></button>'
       + '  <button class="btn btn-danger btn-sm" onclick="doDeleteManualFeeType(\'' + safeName + '\')" title="Delete Fee Type" style="padding:4px 6px;margin-left:4px;"><span class="material-icons-round" style="font-size:15px;">delete</span></button>'
       + '</td>'
       + '</tr>';
@@ -13337,14 +13503,19 @@ function renderManualFeeTypesTable(){
 }
 
 function doAddManualFeeType(){
-  var input = document.getElementById('new-mft-name');
-  if(!input) return;
-  var val = input.value.trim();
+  var nameInput = document.getElementById('new-mft-name');
+  var amtInput = document.getElementById('new-mft-amount');
+  if(!nameInput) return;
+  var val = nameInput.value.trim();
+  var defaultAmt = amtInput ? (parseFloat(amtInput.value) || 0) : 0;
   if(!val){
     showToast('Please enter a fee type name.', 'error');
     return;
   }
-  if(allManualFeeTypes.some(function(t){ return t.toLowerCase() === val.toLowerCase(); })){
+  if(allManualFeeTypes.some(function(t){
+    var obj = normalizeManualFeeType(t);
+    return obj && obj.name.toLowerCase() === val.toLowerCase();
+  })){
     showToast('Fee type "' + val + '" already exists in the list.', 'warning');
     return;
   }
@@ -13353,11 +13524,12 @@ function doAddManualFeeType(){
     setBtnLoading('btn-add-mft', false);
     if(res && res.success){
       showToast('Fee type "' + val + '" added!', 'success');
-      input.value = '';
+      nameInput.value = '';
+      if(amtInput) amtInput.value = '';
       if(Array.isArray(res.data) && res.data.length > 0){
-        allManualFeeTypes = res.data;
+        allManualFeeTypes = res.data.map(function(item){ return normalizeManualFeeType(item); }).filter(Boolean);
       } else {
-        if(!allManualFeeTypes.includes(val)) allManualFeeTypes.push(val);
+        allManualFeeTypes.push({ name: val, defaultAmount: defaultAmt });
       }
       try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
       renderManualFeeTypesTable();
@@ -13368,49 +13540,52 @@ function doAddManualFeeType(){
   }).withFailureHandler(function(err){
     setBtnLoading('btn-add-mft', false);
     showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
-  }).saveManualFeeType(val);
+  }).saveManualFeeType(val, defaultAmt);
 }
 
-function doEditManualFeeType(oldName){
-  showConfirm({
-    title: 'Edit Fee Type',
-    msg: 'Enter a new name for fee type: "' + oldName + '"',
-    icon: 'edit',
-    iconColor: 'primary',
-    okLabel: 'Save Changes',
-    okClass: 'btn-primary',
-    hasInput: true,
-    inputPlaceholder: 'New fee type name',
-    inputValue: oldName,
-    onConfirm: function(newName){
-      var clean = (newName || '').trim();
-      if(!clean){
-        showToast('Fee type name cannot be empty.', 'error');
-        return;
+function openEditManualFeeTypeModal(name, amount){
+  var oldInput = document.getElementById('edit-mft-old-name');
+  var nameInput = document.getElementById('edit-mft-name');
+  var amtInput = document.getElementById('edit-mft-amount');
+  if(oldInput) oldInput.value = name || '';
+  if(nameInput) nameInput.value = name || '';
+  if(amtInput) amtInput.value = (amount !== undefined && amount !== null && amount > 0) ? amount : '';
+  openModal('modal-edit-manual-fee-type');
+}
+
+function doSaveEditManualFeeType(){
+  var oldName = (document.getElementById('edit-mft-old-name') || {}).value || '';
+  var newName = ((document.getElementById('edit-mft-name') || {}).value || '').trim();
+  var newAmt = parseFloat(((document.getElementById('edit-mft-amount') || {}).value || '0')) || 0;
+  if(!newName){
+    showToast('Fee type name cannot be empty.', 'error');
+    return;
+  }
+  setBtnLoading('btn-save-edit-mft', true);
+  google.script.run.withSuccessHandler(function(res){
+    setBtnLoading('btn-save-edit-mft', false);
+    if(res && res.success){
+      showToast('Fee type updated!', 'success');
+      closeModal('modal-edit-manual-fee-type');
+      if(Array.isArray(res.data) && res.data.length > 0){
+        allManualFeeTypes = res.data.map(function(item){ return normalizeManualFeeType(item); }).filter(Boolean);
+      } else {
+        var idx = allManualFeeTypes.findIndex(function(t){
+          var obj = normalizeManualFeeType(t);
+          return obj && obj.name.toLowerCase() === oldName.toLowerCase();
+        });
+        if(idx !== -1) allManualFeeTypes[idx] = { name: newName, defaultAmount: newAmt };
       }
-      if(clean.toLowerCase() === oldName.toLowerCase()) return;
-      
-      showToast('Updating fee type...', 'info');
-      google.script.run.withSuccessHandler(function(res){
-        if(res && res.success){
-          showToast('Fee type updated!', 'success');
-          if(Array.isArray(res.data) && res.data.length > 0){
-            allManualFeeTypes = res.data;
-          } else {
-            var idx = allManualFeeTypes.indexOf(oldName);
-            if(idx !== -1) allManualFeeTypes[idx] = clean;
-          }
-          try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
-          renderManualFeeTypesTable();
-          populateFeeTypeDropdown();
-        } else {
-          showToast('Error: ' + ((res && res.message) || 'Failed to update fee type'), 'error');
-        }
-      }).withFailureHandler(function(err){
-        showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
-      }).updateManualFeeType(oldName, clean);
+      try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
+      renderManualFeeTypesTable();
+      populateFeeTypeDropdown();
+    } else {
+      showToast('Error: ' + ((res && res.message) || 'Failed to update fee type'), 'error');
     }
-  });
+  }).withFailureHandler(function(err){
+    setBtnLoading('btn-save-edit-mft', false);
+    showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
+  }).updateManualFeeType(oldName, newName, newAmt);
 }
 
 function doDeleteManualFeeType(typeName){
@@ -13428,9 +13603,12 @@ function doDeleteManualFeeType(typeName){
         if(res && res.success){
           showToast('Fee type deleted!', 'success');
           if(Array.isArray(res.data) && res.data.length > 0){
-            allManualFeeTypes = res.data;
+            allManualFeeTypes = res.data.map(function(item){ return normalizeManualFeeType(item); }).filter(Boolean);
           } else {
-            allManualFeeTypes = allManualFeeTypes.filter(function(t){ return t !== typeName; });
+            allManualFeeTypes = allManualFeeTypes.filter(function(t){
+              var obj = normalizeManualFeeType(t);
+              return obj && obj.name.toLowerCase() !== typeName.toLowerCase();
+            });
           }
           try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
           renderManualFeeTypesTable();

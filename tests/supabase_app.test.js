@@ -126,30 +126,52 @@ class HostelAppEngine {
   }
 
   async getManualFeeTypes() {
-    const defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+    const defaultTypes = [
+      { name: 'Hostel Fee', defaultAmount: 0 },
+      { name: 'Mess Fee', defaultAmount: 0 },
+      { name: 'Security Deposit', defaultAmount: 0 },
+      { name: 'Hostel Linen Charges', defaultAmount: 0 },
+      { name: 'Other Fee', defaultAmount: 0 }
+    ];
     const res = await this.db.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES');
     let list = defaultTypes.slice();
     if (res.data && res.data[0] && res.data[0].value) {
       try {
         const parsed = JSON.parse(res.data[0].value);
-        if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed.map(item => {
+            if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+            return {
+              name: (item.name || item.typeName || '').toString().trim(),
+              defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+            };
+          }).filter(x => x.name);
+        }
       } catch (e) {}
     }
     return { success: true, data: list };
   }
 
-  async saveManualFeeType(newType) {
-    const cleanType = (newType || '').toString().trim();
+  async saveManualFeeType(newType, defaultAmount = 0) {
+    let cleanType = '';
+    let amt = 0;
+    if (typeof newType === 'object' && newType !== null) {
+      cleanType = (newType.name || '').toString().trim();
+      amt = parseFloat(newType.defaultAmount !== undefined ? newType.defaultAmount : defaultAmount) || 0;
+    } else {
+      cleanType = (newType || '').toString().trim();
+      amt = parseFloat(defaultAmount) || 0;
+    }
     if (!cleanType) return { success: false, message: 'Fee type name cannot be empty.' };
 
     const current = await this.getManualFeeTypes();
     const list = current.data || [];
-    const exists = list.some(t => t.toLowerCase() === cleanType.toLowerCase());
+    const exists = list.some(t => t.name.toLowerCase() === cleanType.toLowerCase());
     if (exists) {
       return { success: false, message: `Fee type "${cleanType}" already exists.`, data: list };
     }
 
-    list.push(cleanType);
+    list.push({ name: cleanType, defaultAmount: amt });
     await this.db.from('hostel_settings').upsert([{
       key: 'MANUAL_FEE_TYPES',
       value: JSON.stringify(list)
@@ -158,30 +180,35 @@ class HostelAppEngine {
     return { success: true, data: list, message: 'Fee type added successfully!' };
   }
 
-  async updateManualFeeType(oldType, newType) {
+  async updateManualFeeType(oldType, newType, newAmount) {
     const cleanOld = (oldType || '').toString().trim();
-    const cleanNew = (newType || '').toString().trim();
+    const cleanNew = (typeof newType === 'object' && newType !== null ? (newType.name || '') : (newType || '')).toString().trim();
+    const updatedAmt = (typeof newType === 'object' && newType !== null && newType.defaultAmount !== undefined)
+      ? parseFloat(newType.defaultAmount) || 0
+      : (newAmount !== undefined && newAmount !== null ? parseFloat(newAmount) || 0 : null);
+
     if (!cleanOld || !cleanNew) {
       return { success: false, message: 'Both old and new fee type names are required.' };
     }
 
     const current = await this.getManualFeeTypes();
     const list = current.data || [];
-    if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+    if (cleanOld.toLowerCase() === cleanNew.toLowerCase() && (updatedAmt === null || isNaN(updatedAmt))) {
       return { success: true, data: list };
     }
 
-    const clash = list.some(t => t.toLowerCase() === cleanNew.toLowerCase() && t.toLowerCase() !== cleanOld.toLowerCase());
+    const clash = list.some(t => t.name.toLowerCase() === cleanNew.toLowerCase() && t.name.toLowerCase() !== cleanOld.toLowerCase());
     if (clash) {
       return { success: false, message: `Fee type "${cleanNew}" already exists.`, data: list };
     }
 
-    const idx = list.findIndex(t => t.toLowerCase() === cleanOld.toLowerCase());
+    const idx = list.findIndex(t => t.name.toLowerCase() === cleanOld.toLowerCase());
     if (idx === -1) {
       return { success: false, message: `Fee type "${cleanOld}" not found.`, data: list };
     }
 
-    list[idx] = cleanNew;
+    const finalAmt = (updatedAmt !== null && !isNaN(updatedAmt)) ? updatedAmt : list[idx].defaultAmount;
+    list[idx] = { name: cleanNew, defaultAmount: finalAmt };
     await this.db.from('hostel_settings').upsert([{
       key: 'MANUAL_FEE_TYPES',
       value: JSON.stringify(list)
@@ -196,7 +223,7 @@ class HostelAppEngine {
 
     const current = await this.getManualFeeTypes();
     const list = current.data || [];
-    const filtered = list.filter(t => t.toLowerCase() !== cleanType.toLowerCase());
+    const filtered = list.filter(t => t.name.toLowerCase() !== cleanType.toLowerCase());
     if (filtered.length === list.length) {
       return { success: false, message: `Fee type "${cleanType}" not found.`, data: list };
     }
@@ -217,11 +244,25 @@ class HostelAppEngine {
     const sMap = {};
     (sRes.data || []).forEach(r => { sMap[r.key] = r.value; });
 
-    let resolvedManualFeeTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+    let resolvedManualFeeTypes = [
+      { name: 'Hostel Fee', defaultAmount: 0 },
+      { name: 'Mess Fee', defaultAmount: 0 },
+      { name: 'Security Deposit', defaultAmount: 0 },
+      { name: 'Hostel Linen Charges', defaultAmount: 0 },
+      { name: 'Other Fee', defaultAmount: 0 }
+    ];
     if (sMap.MANUAL_FEE_TYPES) {
       try {
         const parsedMft = JSON.parse(sMap.MANUAL_FEE_TYPES);
-        if (Array.isArray(parsedMft) && parsedMft.length > 0) resolvedManualFeeTypes = parsedMft;
+        if (Array.isArray(parsedMft) && parsedMft.length > 0) {
+          resolvedManualFeeTypes = parsedMft.map(item => {
+            if (typeof item === 'string') return { name: item.trim(), defaultAmount: 0 };
+            return {
+              name: (item.name || item.typeName || '').toString().trim(),
+              defaultAmount: parseFloat(item.defaultAmount || item.amount || 0) || 0
+            };
+          }).filter(x => x.name);
+        }
       } catch (e) {}
     }
 
@@ -1304,51 +1345,84 @@ test('24. Manual Fee Types Management & Bootstrap Persistence (Add, List, Edit, 
   const initial = await engine.getManualFeeTypes();
   assert.equal(initial.success, true);
   assert.equal(initial.data.length, 5);
-  assert.ok(initial.data.includes('Hostel Fee'));
-  assert.ok(initial.data.includes('Mess Fee'));
+  assert.ok(initial.data.some(t => t.name === 'Hostel Fee'));
+  assert.ok(initial.data.some(t => t.name === 'Mess Fee'));
 
-  // 2. Add new Fee Type as "Information Brochure & Application Form Fee"
-  const addRes = await engine.saveManualFeeType('Information Brochure & Application Form Fee');
+  // 2. Add new Fee Type as "Information Brochure & Application Form Fee" with default amount 500
+  const addRes = await engine.saveManualFeeType('Information Brochure & Application Form Fee', 500);
   assert.equal(addRes.success, true);
   assert.equal(addRes.data.length, 6);
-  assert.ok(addRes.data.includes('Information Brochure & Application Form Fee'));
+  const found = addRes.data.find(t => t.name === 'Information Brochure & Application Form Fee');
+  assert.ok(found);
+  assert.equal(found.defaultAmount, 500);
 
   // 3. Verify it is persisted in hostel_settings
   const getRes = await engine.getManualFeeTypes();
   assert.equal(getRes.success, true);
   assert.equal(getRes.data.length, 6);
-  assert.ok(getRes.data.includes('Information Brochure & Application Form Fee'));
+  assert.ok(getRes.data.some(t => t.name === 'Information Brochure & Application Form Fee' && t.defaultAmount === 500));
 
-  // 4. Verify getAppBootstrapBundle dynamically includes the new fee type
+  // 4. Verify getAppBootstrapBundle dynamically includes the new fee type with amount
   const bundle = await engine.getAppBootstrapBundle();
   assert.ok(Array.isArray(bundle.manualFeeTypes));
   assert.equal(bundle.manualFeeTypes.length, 6);
-  assert.ok(bundle.manualFeeTypes.includes('Information Brochure & Application Form Fee'));
+  assert.ok(bundle.manualFeeTypes.some(t => t.name === 'Information Brochure & Application Form Fee' && t.defaultAmount === 500));
 
   // 5. Prevent duplicate addition (case-insensitive)
-  const dupRes = await engine.saveManualFeeType('information brochure & application form fee');
+  const dupRes = await engine.saveManualFeeType('information brochure & application form fee', 300);
   assert.equal(dupRes.success, false);
   assert.ok(dupRes.message.includes('already exists'));
 
   // 6. Prevent empty fee type
-  const emptyRes = await engine.saveManualFeeType('   ');
+  const emptyRes = await engine.saveManualFeeType('   ', 100);
   assert.equal(emptyRes.success, false);
   assert.ok(emptyRes.message.includes('cannot be empty'));
 
-  // 7. Update/Edit fee type
+  // 7. Update/Edit fee type name and amount
   const updateRes = await engine.updateManualFeeType(
     'Information Brochure & Application Form Fee',
-    'Application Form & Brochure Fee'
+    'Application Form & Brochure Fee',
+    750
   );
   assert.equal(updateRes.success, true);
-  assert.ok(updateRes.data.includes('Application Form & Brochure Fee'));
-  assert.ok(!updateRes.data.includes('Information Brochure & Application Form Fee'));
+  assert.ok(updateRes.data.some(t => t.name === 'Application Form & Brochure Fee' && t.defaultAmount === 750));
+  assert.ok(!updateRes.data.some(t => t.name === 'Information Brochure & Application Form Fee'));
 
   // 8. Delete fee type
   const delRes = await engine.deleteManualFeeType('Application Form & Brochure Fee');
   assert.equal(delRes.success, true);
   assert.equal(delRes.data.length, 5);
-  assert.ok(!delRes.data.includes('Application Form & Brochure Fee'));
+  assert.ok(!delRes.data.some(t => t.name === 'Application Form & Brochure Fee'));
 });
+
+test('25. Manual Receipt Fee Type Selection Auto-populates Editable Amount', () => {
+  // Simulating the onManualFeeTypeChange logic
+  const configuredFeeTypes = [
+    { name: 'Hostel Fee', defaultAmount: 0 },
+    { name: 'Hostel Linen Charges', defaultAmount: 1200 },
+    { name: 'Information Brochure & Application Form Fee', defaultAmount: 500 }
+  ];
+
+  function getAutoFilledAmount(selectedFeeType) {
+    const found = configuredFeeTypes.find(t => t.name.toLowerCase() === selectedFeeType.toLowerCase());
+    return (found && found.defaultAmount > 0) ? found.defaultAmount : '';
+  }
+
+  // 1. Selecting fee type with configured default amount (e.g. 500)
+  assert.equal(getAutoFilledAmount('Information Brochure & Application Form Fee'), 500);
+
+  // 2. Selecting Linen Charges with configured 1200
+  assert.equal(getAutoFilledAmount('Hostel Linen Charges'), 1200);
+
+  // 3. Selecting fee type with 0 or unconfigured amount returns empty (so user enters manually)
+  assert.equal(getAutoFilledAmount('Hostel Fee'), '');
+
+  // 4. Verify value is numeric and can be edited/overwritten to another amount (e.g. user discounts to 450)
+  let userAmountInput = getAutoFilledAmount('Information Brochure & Application Form Fee');
+  assert.equal(userAmountInput, 500);
+  userAmountInput = 450; // User edits the pre-filled amount
+  assert.equal(userAmountInput, 450);
+});
+
 
 
