@@ -26,7 +26,8 @@ class MockSupabaseClient {
       ],
       app_users: [
         { username: 'rector@hostel.com', password_hash: 'admin123', role: 'Rector', status: 'Active' }
-      ]
+      ],
+      hostel_settings: []
     };
   }
 
@@ -74,6 +75,23 @@ class MockSupabaseClient {
         isDelete = true;
         return builder;
       },
+      upsert: (rows) => {
+        if (!self.tables[tableName]) self.tables[tableName] = [];
+        const t = self.tables[tableName];
+        rows.forEach(r => {
+          const idx = t.findIndex(existing => (r.key && existing.key === r.key) || (r.id && existing.id === r.id));
+          if (idx !== -1) {
+            Object.assign(t[idx], r);
+          } else {
+            t.push({ ...r });
+          }
+        });
+        const p = Promise.resolve({ data: rows, error: null });
+        return {
+          then: (resolve, reject) => p.then(resolve, reject),
+          catch: (reject) => p.catch(reject)
+        };
+      },
       then: function(resolve) {
         if (updatePayload) {
           table.forEach(row => {
@@ -105,6 +123,112 @@ class MockSupabaseClient {
 class HostelAppEngine {
   constructor(supabase) {
     this.db = supabase;
+  }
+
+  async getManualFeeTypes() {
+    const defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+    const res = await this.db.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES');
+    let list = defaultTypes.slice();
+    if (res.data && res.data[0] && res.data[0].value) {
+      try {
+        const parsed = JSON.parse(res.data[0].value);
+        if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+      } catch (e) {}
+    }
+    return { success: true, data: list };
+  }
+
+  async saveManualFeeType(newType) {
+    const cleanType = (newType || '').toString().trim();
+    if (!cleanType) return { success: false, message: 'Fee type name cannot be empty.' };
+
+    const current = await this.getManualFeeTypes();
+    const list = current.data || [];
+    const exists = list.some(t => t.toLowerCase() === cleanType.toLowerCase());
+    if (exists) {
+      return { success: false, message: `Fee type "${cleanType}" already exists.`, data: list };
+    }
+
+    list.push(cleanType);
+    await this.db.from('hostel_settings').upsert([{
+      key: 'MANUAL_FEE_TYPES',
+      value: JSON.stringify(list)
+    }]);
+
+    return { success: true, data: list, message: 'Fee type added successfully!' };
+  }
+
+  async updateManualFeeType(oldType, newType) {
+    const cleanOld = (oldType || '').toString().trim();
+    const cleanNew = (newType || '').toString().trim();
+    if (!cleanOld || !cleanNew) {
+      return { success: false, message: 'Both old and new fee type names are required.' };
+    }
+
+    const current = await this.getManualFeeTypes();
+    const list = current.data || [];
+    if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+      return { success: true, data: list };
+    }
+
+    const clash = list.some(t => t.toLowerCase() === cleanNew.toLowerCase() && t.toLowerCase() !== cleanOld.toLowerCase());
+    if (clash) {
+      return { success: false, message: `Fee type "${cleanNew}" already exists.`, data: list };
+    }
+
+    const idx = list.findIndex(t => t.toLowerCase() === cleanOld.toLowerCase());
+    if (idx === -1) {
+      return { success: false, message: `Fee type "${cleanOld}" not found.`, data: list };
+    }
+
+    list[idx] = cleanNew;
+    await this.db.from('hostel_settings').upsert([{
+      key: 'MANUAL_FEE_TYPES',
+      value: JSON.stringify(list)
+    }]);
+
+    return { success: true, data: list, message: 'Fee type updated!' };
+  }
+
+  async deleteManualFeeType(typeName) {
+    const cleanType = (typeName || '').toString().trim();
+    if (!cleanType) return { success: false, message: 'Fee type name cannot be empty.' };
+
+    const current = await this.getManualFeeTypes();
+    const list = current.data || [];
+    const filtered = list.filter(t => t.toLowerCase() !== cleanType.toLowerCase());
+    if (filtered.length === list.length) {
+      return { success: false, message: `Fee type "${cleanType}" not found.`, data: list };
+    }
+    if (filtered.length === 0) {
+      return { success: false, message: 'Cannot delete the only remaining fee type.', data: list };
+    }
+
+    await this.db.from('hostel_settings').upsert([{
+      key: 'MANUAL_FEE_TYPES',
+      value: JSON.stringify(filtered)
+    }]);
+
+    return { success: true, data: filtered, message: 'Fee type deleted!' };
+  }
+
+  async getAppBootstrapBundle() {
+    const sRes = await this.db.from('hostel_settings').select('*');
+    const sMap = {};
+    (sRes.data || []).forEach(r => { sMap[r.key] = r.value; });
+
+    let resolvedManualFeeTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+    if (sMap.MANUAL_FEE_TYPES) {
+      try {
+        const parsedMft = JSON.parse(sMap.MANUAL_FEE_TYPES);
+        if (Array.isArray(parsedMft) && parsedMft.length > 0) resolvedManualFeeTypes = parsedMft;
+      } catch (e) {}
+    }
+
+    return {
+      settings: sMap,
+      manualFeeTypes: resolvedManualFeeTypes
+    };
   }
 
   async submitStudentApplication(formData) {
@@ -1171,4 +1295,60 @@ test('23. Student Personal Data Course and College Normalizer (Bams -> B. A. M. 
   assert.equal(normalizeCourseName('Computer science and Engineering'), 'B. TECH. COMPUTER SCIENCE AND ENGINEERING');
   assert.equal(normalizeCourseName('B. TECH. ELECTRONICS AND COMPUTER ENGINEERING'), 'B. TECH. ELECTRONICS AND COMPUTER ENGINEERING');
 });
+
+test('24. Manual Fee Types Management & Bootstrap Persistence (Add, List, Edit, Duplicate Prevention, Delete)', async () => {
+  const supabase = new MockSupabaseClient();
+  const engine = new HostelAppEngine(supabase);
+
+  // 1. Initial manual fee types should return default 5 types
+  const initial = await engine.getManualFeeTypes();
+  assert.equal(initial.success, true);
+  assert.equal(initial.data.length, 5);
+  assert.ok(initial.data.includes('Hostel Fee'));
+  assert.ok(initial.data.includes('Mess Fee'));
+
+  // 2. Add new Fee Type as "Information Brochure & Application Form Fee"
+  const addRes = await engine.saveManualFeeType('Information Brochure & Application Form Fee');
+  assert.equal(addRes.success, true);
+  assert.equal(addRes.data.length, 6);
+  assert.ok(addRes.data.includes('Information Brochure & Application Form Fee'));
+
+  // 3. Verify it is persisted in hostel_settings
+  const getRes = await engine.getManualFeeTypes();
+  assert.equal(getRes.success, true);
+  assert.equal(getRes.data.length, 6);
+  assert.ok(getRes.data.includes('Information Brochure & Application Form Fee'));
+
+  // 4. Verify getAppBootstrapBundle dynamically includes the new fee type
+  const bundle = await engine.getAppBootstrapBundle();
+  assert.ok(Array.isArray(bundle.manualFeeTypes));
+  assert.equal(bundle.manualFeeTypes.length, 6);
+  assert.ok(bundle.manualFeeTypes.includes('Information Brochure & Application Form Fee'));
+
+  // 5. Prevent duplicate addition (case-insensitive)
+  const dupRes = await engine.saveManualFeeType('information brochure & application form fee');
+  assert.equal(dupRes.success, false);
+  assert.ok(dupRes.message.includes('already exists'));
+
+  // 6. Prevent empty fee type
+  const emptyRes = await engine.saveManualFeeType('   ');
+  assert.equal(emptyRes.success, false);
+  assert.ok(emptyRes.message.includes('cannot be empty'));
+
+  // 7. Update/Edit fee type
+  const updateRes = await engine.updateManualFeeType(
+    'Information Brochure & Application Form Fee',
+    'Application Form & Brochure Fee'
+  );
+  assert.equal(updateRes.success, true);
+  assert.ok(updateRes.data.includes('Application Form & Brochure Fee'));
+  assert.ok(!updateRes.data.includes('Information Brochure & Application Form Fee'));
+
+  // 8. Delete fee type
+  const delRes = await engine.deleteManualFeeType('Application Form & Brochure Fee');
+  assert.equal(delRes.success, true);
+  assert.equal(delRes.data.length, 5);
+  assert.ok(!delRes.data.includes('Application Form & Brochure Fee'));
+});
+
 

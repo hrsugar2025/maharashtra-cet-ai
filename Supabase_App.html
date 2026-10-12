@@ -1869,12 +1869,11 @@ if (typeof window.google.script.run === 'undefined') {
                 </div>
                 <select id="fee-type" class="form-select">
                   <option value="">Select Type</option>
-                  <option>Admission Fee</option>
-                  <option>Monthly Hostel Fee</option>
+                  <option>Hostel Fee</option>
+                  <option>Mess Fee</option>
                   <option>Security Deposit</option>
                   <option>Hostel Linen Charges</option>
-                  <option>Fine</option>
-                  <option>Miscellaneous</option>
+                  <option>Other Fee</option>
                 </select>
               </div>
               <div class="form-group"><label class="form-label">Amount (&#8377;) *</label><input type="number" id="fee-amount" class="form-input" placeholder="0.00"/></div>
@@ -4689,7 +4688,18 @@ window.google = {
                 availableAcademicYears: ['2026-27', '2025-26', '2024-25'],
                 roomTypes: roomTypes,
                 feeStructures: feeStructures,
-                manualFeeTypes: ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'],
+                manualFeeTypes: (function(){
+                  var defaultMft = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+                  var resList = defaultMft.slice();
+                  if (sMap && sMap.MANUAL_FEE_TYPES) {
+                    try {
+                      var parsedMft = JSON.parse(sMap.MANUAL_FEE_TYPES);
+                      if (Array.isArray(parsedMft) && parsedMft.length > 0) resList = parsedMft;
+                    } catch(e) {}
+                  }
+                  try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(resList)); } catch(e) {}
+                  return resList;
+                })(),
                 dashboard: {
                   totalStudents: approvedStudents.length,
                   pendingCount: pendingStudents.length,
@@ -6192,15 +6202,157 @@ window.google = {
 
           // ── MANUAL FEE TYPES ────────────────────────────────────
           saveManualFeeType: function(newType) {
-            successCb({ success: true, message: 'Manual fee type saved.' });
+            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+            var cleanType = (newType || '').toString().trim();
+            if (!cleanType) {
+              return successCb({ success: false, message: 'Fee type name cannot be empty.' });
+            }
+
+            _supabase.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES').then(function(res) {
+              var list = defaultTypes.slice();
+              if (res.data && res.data[0] && res.data[0].value) {
+                try {
+                  var parsed = JSON.parse(res.data[0].value);
+                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                } catch(e) {}
+              }
+
+              var exists = list.some(function(t) { return t.toLowerCase() === cleanType.toLowerCase(); });
+              if (exists) {
+                return successCb({ success: false, message: 'Fee type "' + cleanType + '" already exists.', data: list });
+              }
+
+              list.push(cleanType);
+              try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
+
+              _supabase.from('hostel_settings').upsert([{
+                key: 'MANUAL_FEE_TYPES',
+                value: JSON.stringify(list)
+              }]).then(function() {
+                successCb({ success: true, data: list, message: 'Fee type added successfully!' });
+              }).catch(function(err) {
+                console.error('Error persisting manual fee type:', err);
+                successCb({ success: true, data: list, message: 'Fee type added successfully!' });
+              });
+            }).catch(function(err) {
+              var list = defaultTypes.slice();
+              try {
+                var cached = localStorage.getItem('cached_manual_fee_types');
+                if (cached) {
+                  var p = JSON.parse(cached);
+                  if (Array.isArray(p) && p.length > 0) list = p;
+                }
+              } catch(e) {}
+              if (!list.some(function(t) { return t.toLowerCase() === cleanType.toLowerCase(); })) {
+                list.push(cleanType);
+              }
+              try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
+              _supabase.from('hostel_settings').upsert([{
+                key: 'MANUAL_FEE_TYPES',
+                value: JSON.stringify(list)
+              }]).then(function() {
+                successCb({ success: true, data: list, message: 'Fee type added successfully!' });
+              }).catch(function() {
+                successCb({ success: true, data: list, message: 'Fee type added successfully!' });
+              });
+            });
           },
 
           updateManualFeeType: function(oldType, newType) {
-            successCb({ success: true, message: 'Manual fee type updated.' });
+            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+            var cleanOld = (oldType || '').toString().trim();
+            var cleanNew = (newType || '').toString().trim();
+            if (!cleanOld || !cleanNew) {
+              return successCb({ success: false, message: 'Both old and new fee type names are required.' });
+            }
+
+            _supabase.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES').then(function(res) {
+              var list = defaultTypes.slice();
+              if (res.data && res.data[0] && res.data[0].value) {
+                try {
+                  var parsed = JSON.parse(res.data[0].value);
+                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                } catch(e) {}
+              }
+
+              if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+                return successCb({ success: true, data: list });
+              }
+
+              var clash = list.some(function(t) {
+                return t.toLowerCase() === cleanNew.toLowerCase() && t.toLowerCase() !== cleanOld.toLowerCase();
+              });
+              if (clash) {
+                return successCb({ success: false, message: 'Fee type "' + cleanNew + '" already exists.', data: list });
+              }
+
+              var idx = -1;
+              for (var i = 0; i < list.length; i++) {
+                if (list[i].toLowerCase() === cleanOld.toLowerCase()) {
+                  idx = i;
+                  break;
+                }
+              }
+              if (idx === -1) {
+                return successCb({ success: false, message: 'Fee type "' + cleanOld + '" not found.', data: list });
+              }
+
+              list[idx] = cleanNew;
+              try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
+
+              _supabase.from('hostel_settings').upsert([{
+                key: 'MANUAL_FEE_TYPES',
+                value: JSON.stringify(list)
+              }]).then(function() {
+                successCb({ success: true, data: list, message: 'Fee type updated!' });
+              }).catch(function() {
+                successCb({ success: true, data: list, message: 'Fee type updated!' });
+              });
+            }).catch(function(err) {
+              successCb({ success: false, message: err.message || 'Error updating fee type.' });
+            });
           },
 
           deleteManualFeeType: function(typeName) {
-            successCb({ success: true, message: 'Manual fee type deleted.' });
+            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+            var cleanType = (typeName || '').toString().trim();
+            if (!cleanType) {
+              return successCb({ success: false, message: 'Fee type name cannot be empty.' });
+            }
+
+            _supabase.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES').then(function(res) {
+              var list = defaultTypes.slice();
+              if (res.data && res.data[0] && res.data[0].value) {
+                try {
+                  var parsed = JSON.parse(res.data[0].value);
+                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                } catch(e) {}
+              }
+
+              var filtered = list.filter(function(t) {
+                return t.toLowerCase() !== cleanType.toLowerCase();
+              });
+
+              if (filtered.length === list.length) {
+                return successCb({ success: false, message: 'Fee type "' + cleanType + '" not found.', data: list });
+              }
+              if (filtered.length === 0) {
+                return successCb({ success: false, message: 'Cannot delete the only remaining fee type.', data: list });
+              }
+
+              try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(filtered)); } catch(e) {}
+
+              _supabase.from('hostel_settings').upsert([{
+                key: 'MANUAL_FEE_TYPES',
+                value: JSON.stringify(filtered)
+              }]).then(function() {
+                successCb({ success: true, data: filtered, message: 'Fee type deleted!' });
+              }).catch(function() {
+                successCb({ success: true, data: filtered, message: 'Fee type deleted!' });
+              });
+            }).catch(function(err) {
+              successCb({ success: false, message: err.message || 'Error deleting fee type.' });
+            });
           },
 
           // ── ADMISSION CANCELLATION & PREVIEW ────────────────────
@@ -6627,14 +6779,27 @@ window.google = {
           },
 
           getManualFeeTypes: function() {
+            var defaultTypes = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
             _supabase.from('hostel_settings').select('*').eq('key', 'MANUAL_FEE_TYPES').then(function(res) {
-              var list = ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'];
+              var list = defaultTypes.slice();
               if (res.data && res.data[0] && res.data[0].value) {
-                try { list = JSON.parse(res.data[0].value); } catch(e) {}
+                try {
+                  var parsed = JSON.parse(res.data[0].value);
+                  if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+                } catch(e) {}
               }
+              try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(list)); } catch(e) {}
               successCb({ success: true, data: list });
             }).catch(function() {
-              successCb({ success: true, data: ['Hostel Fee', 'Mess Fee', 'Security Deposit', 'Hostel Linen Charges', 'Other Fee'] });
+              var list = defaultTypes.slice();
+              try {
+                var cached = localStorage.getItem('cached_manual_fee_types');
+                if (cached) {
+                  var p = JSON.parse(cached);
+                  if (Array.isArray(p) && p.length > 0) list = p;
+                }
+              } catch(e) {}
+              successCb({ success: true, data: list });
             });
           },
 
@@ -13086,19 +13251,29 @@ function renderFeeReceipts(){
 }
 
 // ── MANUAL FEE TYPES MANAGEMENT (Admin Configurable) ─────────
-var allManualFeeTypes = [
-  "Admission Fee",
-  "Monthly Hostel Fee",
-  "Security Deposit",
-  "Hostel Linen Charges",
-  "Fine",
-  "Miscellaneous"
-];
+var allManualFeeTypes = (function(){
+  var defaultTypes = [
+    "Hostel Fee",
+    "Mess Fee",
+    "Security Deposit",
+    "Hostel Linen Charges",
+    "Other Fee"
+  ];
+  try {
+    var cached = localStorage.getItem('cached_manual_fee_types');
+    if(cached){
+      var parsed = JSON.parse(cached);
+      if(Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch(e){}
+  return defaultTypes;
+})();
 
 function loadManualFeeTypes(callback){
   google.script.run.withSuccessHandler(function(res){
     if(res && res.success && Array.isArray(res.data) && res.data.length){
       allManualFeeTypes = res.data;
+      try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(res.data)); } catch(e){}
     }
     populateFeeTypeDropdown();
     if(typeof callback === 'function') callback();
@@ -13169,21 +13344,30 @@ function doAddManualFeeType(){
     showToast('Please enter a fee type name.', 'error');
     return;
   }
+  if(allManualFeeTypes.some(function(t){ return t.toLowerCase() === val.toLowerCase(); })){
+    showToast('Fee type "' + val + '" already exists in the list.', 'warning');
+    return;
+  }
   setBtnLoading('btn-add-mft', true);
   google.script.run.withSuccessHandler(function(res){
     setBtnLoading('btn-add-mft', false);
-    if(res.success){
+    if(res && res.success){
       showToast('Fee type "' + val + '" added!', 'success');
       input.value = '';
-      allManualFeeTypes = res.data || [];
+      if(Array.isArray(res.data) && res.data.length > 0){
+        allManualFeeTypes = res.data;
+      } else {
+        if(!allManualFeeTypes.includes(val)) allManualFeeTypes.push(val);
+      }
+      try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
       renderManualFeeTypesTable();
       populateFeeTypeDropdown();
     } else {
-      showToast('Error: ' + res.message, 'error');
+      showToast('Error: ' + ((res && res.message) || 'Failed to add fee type'), 'error');
     }
   }).withFailureHandler(function(err){
     setBtnLoading('btn-add-mft', false);
-    showToast('Server error: ' + err.message, 'error');
+    showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
   }).saveManualFeeType(val);
 }
 
@@ -13208,16 +13392,22 @@ function doEditManualFeeType(oldName){
       
       showToast('Updating fee type...', 'info');
       google.script.run.withSuccessHandler(function(res){
-        if(res.success){
+        if(res && res.success){
           showToast('Fee type updated!', 'success');
-          allManualFeeTypes = res.data || [];
+          if(Array.isArray(res.data) && res.data.length > 0){
+            allManualFeeTypes = res.data;
+          } else {
+            var idx = allManualFeeTypes.indexOf(oldName);
+            if(idx !== -1) allManualFeeTypes[idx] = clean;
+          }
+          try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
           renderManualFeeTypesTable();
           populateFeeTypeDropdown();
         } else {
-          showToast('Error: ' + res.message, 'error');
+          showToast('Error: ' + ((res && res.message) || 'Failed to update fee type'), 'error');
         }
       }).withFailureHandler(function(err){
-        showToast('Server error: ' + err.message, 'error');
+        showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
       }).updateManualFeeType(oldName, clean);
     }
   });
@@ -13235,16 +13425,21 @@ function doDeleteManualFeeType(typeName){
     onConfirm: function(){
       showToast('Deleting fee type...', 'info');
       google.script.run.withSuccessHandler(function(res){
-        if(res.success){
+        if(res && res.success){
           showToast('Fee type deleted!', 'success');
-          allManualFeeTypes = res.data || [];
+          if(Array.isArray(res.data) && res.data.length > 0){
+            allManualFeeTypes = res.data;
+          } else {
+            allManualFeeTypes = allManualFeeTypes.filter(function(t){ return t !== typeName; });
+          }
+          try { localStorage.setItem('cached_manual_fee_types', JSON.stringify(allManualFeeTypes)); } catch(e){}
           renderManualFeeTypesTable();
           populateFeeTypeDropdown();
         } else {
-          showToast('Error: ' + res.message, 'error');
+          showToast('Error: ' + ((res && res.message) || 'Failed to delete fee type'), 'error');
         }
       }).withFailureHandler(function(err){
-        showToast('Server error: ' + err.message, 'error');
+        showToast('Server error: ' + (err && err.message ? err.message : err), 'error');
       }).deleteManualFeeType(typeName);
     }
   });
