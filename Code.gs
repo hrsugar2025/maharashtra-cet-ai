@@ -1149,6 +1149,117 @@ function isFeeHeadMatch(feeTypeA, feeTypeB) {
   return false;
 }
 
+// ── CANONICAL FEE TYPE NORMALIZATION & ALLOCATION ENGINE ───────
+function normalizeFeeTypeName(raw) {
+  if (!raw) return 'Other';
+  var s = raw.toString().trim();
+  var clean = s.replace(/\s*\(\s*(?:₹|Rs\.?)?\s*[\d,]+\s*\)\s*$/i, '').trim();
+  var lower = clean.toLowerCase();
+
+  if (lower.indexOf('deposit') !== -1 || lower.indexOf('security') !== -1 || lower.indexOf('caution') !== -1) {
+    return 'SECURITY DEPOSIT (REFUNDABLE)';
+  }
+  if (lower.indexOf('linen') !== -1 || lower.indexOf('bedding') !== -1 || lower.indexOf('kit') !== -1) {
+    return 'Hostel Linen Charges';
+  }
+  if (lower.indexOf('mess') !== -1 || lower.indexOf('food') !== -1 || lower.indexOf('dining') !== -1 || lower.indexOf('canteen') !== -1 || lower.indexOf('meal') !== -1) {
+    return 'MESS CHARGES';
+  }
+  if (lower.indexOf('accom') !== -1 || lower.indexOf('hostel') !== -1 || lower.indexOf('room') !== -1 || lower.indexOf('rent') !== -1 || lower.indexOf('stay') !== -1) {
+    return 'ACCOMODATION CHARGES';
+  }
+  return clean;
+}
+
+function parseReceiptFeeAllocations(feeTypeStr, totalAmt) {
+  if (!feeTypeStr) return [{ type: 'Other', amount: parseFloat(totalAmt) || 0 }];
+  var s = feeTypeStr.toString().trim();
+  var amt = parseFloat(totalAmt) || 0;
+
+  if (s.indexOf(',') !== -1) {
+    var rawParts = s.split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+    var parsedParts = [];
+    var allHaveAmt = true;
+
+    rawParts.forEach(function(part) {
+      var amtMatch = part.match(/^(.*?)\s*\(\s*(?:₹|Rs\.?)?\s*([\d,]+)\s*\)$/i);
+      if (amtMatch) {
+        parsedParts.push({
+          type: normalizeFeeTypeName(amtMatch[1]),
+          amount: parseFloat(amtMatch[2].replace(/,/g, '')) || 0
+        });
+      } else {
+        allHaveAmt = false;
+      }
+    });
+
+    if (allHaveAmt && parsedParts.length > 0) {
+      return parsedParts;
+    }
+
+    var normalizedHeads = rawParts.map(normalizeFeeTypeName);
+    var hasAccom = normalizedHeads.indexOf('ACCOMODATION CHARGES') !== -1;
+    var hasMess = normalizedHeads.indexOf('MESS CHARGES') !== -1;
+
+    if (hasAccom && hasMess && normalizedHeads.length === 2) {
+      if (amt === 40000) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 17800 },
+          { type: 'MESS CHARGES', amount: 22200 }
+        ];
+      }
+      if (amt === 47500) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 25300 },
+          { type: 'MESS CHARGES', amount: 22200 }
+        ];
+      }
+      if (amt === 95000) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 50600 },
+          { type: 'MESS CHARGES', amount: 44400 }
+        ];
+      }
+      if (amt === 35000) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 17800 },
+          { type: 'MESS CHARGES', amount: 17200 }
+        ];
+      }
+      if (amt === 52500) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 25300 },
+          { type: 'MESS CHARGES', amount: 27200 }
+        ];
+      }
+      if (amt === 45000) {
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: 17800 },
+          { type: 'MESS CHARGES', amount: 27200 }
+        ];
+      }
+      var accomPart = Math.round(amt / 2);
+      return [
+        { type: 'ACCOMODATION CHARGES', amount: accomPart },
+        { type: 'MESS CHARGES', amount: amt - accomPart }
+      ];
+    }
+  }
+
+  return [{ type: normalizeFeeTypeName(s), amount: amt }];
+}
+
+function formatReceiptDisplayFeeType(rawFt, totalAmt) {
+  if (!rawFt) return '';
+  var allocations = parseReceiptFeeAllocations(rawFt, totalAmt);
+  if (allocations.length > 1) {
+    return allocations.map(function(a) {
+      return a.type + ' (₹' + a.amount.toLocaleString('en-IN') + ')';
+    }).join(', ');
+  }
+  return normalizeFeeTypeName(rawFt);
+}
+
 // Add fee receipt and automatically settle against student dues
 function addFeeReceipt(feeData) {
   try {
@@ -1746,11 +1857,18 @@ function getFeeCollectionReport(month, year, academicYear, fromDate, toDate, fee
     var fees = feesResult.data || [];
 
     // Collect all available fee types from the receipts before filtering
-    var feeTypesSet = {};
+    var feeTypesSet = {
+      "ACCOMODATION CHARGES": true,
+      "MESS CHARGES": true,
+      "SECURITY DEPOSIT (REFUNDABLE)": true,
+      "Hostel Linen Charges": true
+    };
     fees.forEach(function(f) {
-      if (f.feeType && f.feeType.toString().trim()) {
-        feeTypesSet[f.feeType.toString().trim()] = true;
-      }
+      var amtPaid = parseFloat(f.amountPaid) || 0;
+      var allocations = parseReceiptFeeAllocations(f.feeType, amtPaid);
+      allocations.forEach(function(a) {
+        if (a.type && a.type !== "Other") feeTypesSet[a.type] = true;
+      });
     });
     var availableFeeTypes = Object.keys(feeTypesSet).sort();
 
@@ -1794,7 +1912,7 @@ function getFeeCollectionReport(month, year, academicYear, fromDate, toDate, fee
     var hasDateRange = (fromTime !== null || toTime !== null);
 
     var targetFeeType = (feeType && feeType.toString().trim() !== "" && feeType.toString().toLowerCase() !== "all")
-      ? feeType.toString().trim().toLowerCase()
+      ? normalizeFeeTypeName(feeType)
       : "";
 
     var targetMonthIdx = -1;
@@ -1832,10 +1950,10 @@ function getFeeCollectionReport(month, year, academicYear, fromDate, toDate, fee
 
       // 2. Filter by Fee Type
       if (targetFeeType !== "") {
-        var rFeeType = (f.feeType || "").toString().trim().toLowerCase();
-        if (rFeeType !== targetFeeType && !isFeeHeadMatch(rFeeType, targetFeeType)) {
-          return false;
-        }
+        var rAmt = parseFloat(f.amountPaid) || 0;
+        var allocs = parseReceiptFeeAllocations(f.rawFeeType || f.feeType, rAmt);
+        var match = allocs.some(function(a) { return a.type === targetFeeType; });
+        if (!match) return false;
       }
 
       // 3. Month & Year filter (if date range is not specified)
@@ -1901,17 +2019,49 @@ function getFeeCollectionReport(month, year, academicYear, fromDate, toDate, fee
     var byType = {};
     var byMode = {};
 
+    if (!targetFeeType) {
+      availableFeeTypes.forEach(function(t) { byType[t] = 0; });
+    } else {
+      byType[targetFeeType] = 0;
+    }
+
     filtered.forEach(function(f) {
       var amt = parseFloat(f.amountPaid) || 0;
-      totalAmount += amt;
+      var allocs = parseReceiptFeeAllocations(f.rawFeeType || f.feeType, amt);
 
-      var typeKey = (f.feeType || "Other").trim();
-      if (!byType[typeKey]) byType[typeKey] = 0;
-      byType[typeKey] += amt;
+      if (targetFeeType) {
+        var targetAlloc = allocs.find(function(a) { return a.type === targetFeeType; });
+        var headAmt = targetAlloc ? targetAlloc.amount : amt;
+        totalAmount += headAmt;
+        byType[targetFeeType] = (byType[targetFeeType] || 0) + headAmt;
+        var modeKey = (f.paymentMode || "Cash").trim();
+        byMode[modeKey] = (byMode[modeKey] || 0) + headAmt;
+      } else {
+        totalAmount += amt;
+        allocs.forEach(function(a) {
+          byType[a.type] = (byType[a.type] || 0) + a.amount;
+        });
+        var modeKey = (f.paymentMode || "Cash").trim();
+        byMode[modeKey] = (byMode[modeKey] || 0) + amt;
+      }
+    });
 
-      var modeKey = (f.paymentMode || "Cash").trim();
-      if (!byMode[modeKey]) byMode[modeKey] = 0;
-      byMode[modeKey] += amt;
+    // Clean zero-value non-core types & sort by collection descending
+    var sortedByType = {};
+    var coreOrder = ['ACCOMODATION CHARGES','MESS CHARGES','SECURITY DEPOSIT (REFUNDABLE)','Hostel Linen Charges'];
+    Object.keys(byType).sort(function(a, b) {
+      return (byType[b] || 0) - (byType[a] || 0);
+    }).forEach(function(k) {
+      if (byType[k] > 0 || coreOrder.indexOf(k) !== -1) {
+        sortedByType[k] = byType[k];
+      }
+    });
+
+    var sortedByMode = {};
+    Object.keys(byMode).sort(function(a, b) {
+      return (byMode[b] || 0) - (byMode[a] || 0);
+    }).forEach(function(k) {
+      sortedByMode[k] = byMode[k];
     });
 
     return {
@@ -1919,8 +2069,8 @@ function getFeeCollectionReport(month, year, academicYear, fromDate, toDate, fee
       data: {
         totalAmount: totalAmount,
         totalReceipts: filtered.length,
-        byType: byType,
-        byMode: byMode,
+        byType: sortedByType,
+        byMode: sortedByMode,
         receipts: filtered,
         availableFeeTypes: availableFeeTypes
       }

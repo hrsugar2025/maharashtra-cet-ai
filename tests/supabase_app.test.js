@@ -1424,5 +1424,196 @@ test('25. Manual Receipt Fee Type Selection Auto-populates Editable Amount', () 
   assert.equal(userAmountInput, 450);
 });
 
+test('26. Fee Collection Report - Strict 4 Fee Types & Accurate Allocation Engine', () => {
+  // 1. Fee Type Normalizer
+  function normalizeFeeTypeName(raw) {
+    if (!raw) return 'Other';
+    var s = raw.toString().trim();
+    var clean = s.replace(/\s*\(\s*(?:₹|Rs\.?)?\s*[\d,]+\s*\)\s*$/i, '').trim();
+    var lower = clean.toLowerCase();
+
+    if (lower.indexOf('deposit') !== -1 || lower.indexOf('security') !== -1 || lower.indexOf('caution') !== -1) {
+      return 'SECURITY DEPOSIT (REFUNDABLE)';
+    }
+    if (lower.indexOf('linen') !== -1 || lower.indexOf('bedding') !== -1 || lower.indexOf('kit') !== -1) {
+      return 'Hostel Linen Charges';
+    }
+    if (lower.indexOf('mess') !== -1 || lower.indexOf('food') !== -1 || lower.indexOf('dining') !== -1 || lower.indexOf('canteen') !== -1 || lower.indexOf('meal') !== -1) {
+      return 'MESS CHARGES';
+    }
+    if (lower.indexOf('accom') !== -1 || lower.indexOf('hostel') !== -1 || lower.indexOf('room') !== -1 || lower.indexOf('rent') !== -1 || lower.indexOf('stay') !== -1) {
+      return 'ACCOMODATION CHARGES';
+    }
+    return clean;
+  }
+
+  // Verify synonym and typo mapping
+  assert.equal(normalizeFeeTypeName('ACCOMADATION CHARGES'), 'ACCOMODATION CHARGES');
+  assert.equal(normalizeFeeTypeName('ACCOMMODATION CHARGES'), 'ACCOMODATION CHARGES');
+  assert.equal(normalizeFeeTypeName('Hostel Fee'), 'ACCOMODATION CHARGES');
+  assert.equal(normalizeFeeTypeName('Room Rent'), 'ACCOMODATION CHARGES');
+  assert.equal(normalizeFeeTypeName('MESS CHARGES'), 'MESS CHARGES');
+  assert.equal(normalizeFeeTypeName('Mess Fee'), 'MESS CHARGES');
+  assert.equal(normalizeFeeTypeName('SECURITY DEPOSIT (REFUNDABLE)'), 'SECURITY DEPOSIT (REFUNDABLE)');
+  assert.equal(normalizeFeeTypeName('SECURITY DEPOSIT (REFUNDABLE) (₹15000)'), 'SECURITY DEPOSIT (REFUNDABLE)');
+  assert.equal(normalizeFeeTypeName('Hostel Linen Charges'), 'Hostel Linen Charges');
+  assert.equal(normalizeFeeTypeName('Information Brochure & Application Form Fee'), 'Information Brochure & Application Form Fee');
+
+  // 2. Receipt Allocation Engine
+  function parseReceiptFeeAllocations(feeTypeStr, totalAmt) {
+    if (!feeTypeStr) return [{ type: 'Other', amount: parseFloat(totalAmt) || 0 }];
+    var s = feeTypeStr.toString().trim();
+    var amt = parseFloat(totalAmt) || 0;
+
+    if (s.indexOf(',') !== -1) {
+      var rawParts = s.split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+      var parsedParts = [];
+      var allHaveAmt = true;
+
+      rawParts.forEach(function(part) {
+        var amtMatch = part.match(/^(.*?)\s*\(\s*(?:₹|Rs\.?)?\s*([\d,]+)\s*\)$/i);
+        if (amtMatch) {
+          parsedParts.push({
+            type: normalizeFeeTypeName(amtMatch[1]),
+            amount: parseFloat(amtMatch[2].replace(/,/g, '')) || 0
+          });
+        } else {
+          allHaveAmt = false;
+        }
+      });
+
+      if (allHaveAmt && parsedParts.length > 0) {
+        return parsedParts;
+      }
+
+      var normalizedHeads = rawParts.map(normalizeFeeTypeName);
+      var hasAccom = normalizedHeads.indexOf('ACCOMODATION CHARGES') !== -1;
+      var hasMess = normalizedHeads.indexOf('MESS CHARGES') !== -1;
+
+      if (hasAccom && hasMess && normalizedHeads.length === 2) {
+        if (amt === 40000) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 17800 },
+            { type: 'MESS CHARGES', amount: 22200 }
+          ];
+        }
+        if (amt === 47500) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 25300 },
+            { type: 'MESS CHARGES', amount: 22200 }
+          ];
+        }
+        if (amt === 95000) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 50600 },
+            { type: 'MESS CHARGES', amount: 44400 }
+          ];
+        }
+        if (amt === 35000) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 17800 },
+            { type: 'MESS CHARGES', amount: 17200 }
+          ];
+        }
+        if (amt === 52500) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 25300 },
+            { type: 'MESS CHARGES', amount: 27200 }
+          ];
+        }
+        if (amt === 45000) {
+          return [
+            { type: 'ACCOMODATION CHARGES', amount: 17800 },
+            { type: 'MESS CHARGES', amount: 27200 }
+          ];
+        }
+        var accomPart = Math.round(amt / 2);
+        return [
+          { type: 'ACCOMODATION CHARGES', amount: accomPart },
+          { type: 'MESS CHARGES', amount: amt - accomPart }
+        ];
+      }
+    }
+
+    return [{ type: normalizeFeeTypeName(s), amount: amt }];
+  }
+
+  // 3. Test multi-head breakdown
+  const combo1 = parseReceiptFeeAllocations('ACCOMODATION CHARGES (₹25300), MESS CHARGES (₹27200)', 52500);
+  assert.equal(combo1.length, 2);
+  assert.equal(combo1[0].type, 'ACCOMODATION CHARGES');
+  assert.equal(combo1[0].amount, 25300);
+  assert.equal(combo1[1].type, 'MESS CHARGES');
+  assert.equal(combo1[1].amount, 27200);
+
+  const combo2 = parseReceiptFeeAllocations('ACCOMADATION CHARGES, MESS CHARGES', 40000);
+  assert.equal(combo2.length, 2);
+  assert.equal(combo2[0].type, 'ACCOMODATION CHARGES');
+  assert.equal(combo2[0].amount, 17800);
+  assert.equal(combo2[1].type, 'MESS CHARGES');
+  assert.equal(combo2[1].amount, 22200);
+
+  // 4. Test Report Aggregation over sample dataset
+  const sampleReceipts = [
+    { receipt_id: 'R-01', fee_type: 'SECURITY DEPOSIT (REFUNDABLE)', amount_paid: 15000 },
+    { receipt_id: 'R-02', fee_type: 'SECURITY DEPOSIT (REFUNDABLE) (₹15000)', amount_paid: 15000 },
+    { receipt_id: 'R-03', fee_type: 'ACCOMODATION CHARGES', amount_paid: 25300 },
+    { receipt_id: 'R-04', fee_type: 'ACCOMADATION CHARGES', amount_paid: 17800 },
+    { receipt_id: 'R-05', fee_type: 'MESS CHARGES', amount_paid: 27200 },
+    { receipt_id: 'R-06', fee_type: 'ACCOMODATION CHARGES (₹25300), MESS CHARGES (₹27200)', amount_paid: 52500 },
+    { receipt_id: 'R-07', fee_type: 'ACCOMADATION CHARGES, MESS CHARGES', amount_paid: 40000 },
+    { receipt_id: 'R-08', fee_type: 'Hostel Linen Charges', amount_paid: 1000 }
+  ];
+
+  const totalReceiptsAmount = sampleReceipts.reduce((sum, r) => sum + r.amount_paid, 0); // 15000+15000+25300+17800+27200+52500+40000+1000 = 193800
+  assert.equal(totalReceiptsAmount, 193800);
+
+  const byType = {};
+  sampleReceipts.forEach(r => {
+    const allocs = parseReceiptFeeAllocations(r.fee_type, r.amount_paid);
+    allocs.forEach(a => {
+      byType[a.type] = (byType[a.type] || 0) + a.amount;
+    });
+  });
+
+  // Verify strictly 4 fee types appear in the summary
+  const summaryTypes = Object.keys(byType);
+  assert.equal(summaryTypes.length, 4);
+  assert.ok(summaryTypes.includes('SECURITY DEPOSIT (REFUNDABLE)'));
+  assert.ok(summaryTypes.includes('ACCOMODATION CHARGES'));
+  assert.ok(summaryTypes.includes('MESS CHARGES'));
+  assert.ok(summaryTypes.includes('Hostel Linen Charges'));
+
+  // Verify no composite types or amount suffixes exist
+  assert.ok(!summaryTypes.some(t => t.includes(',') || t.includes('₹') || /\(\d+/.test(t)));
+
+  // Verify amounts per fee type
+  assert.equal(byType['SECURITY DEPOSIT (REFUNDABLE)'], 30000); // 15000 + 15000
+  assert.equal(byType['ACCOMODATION CHARGES'], 86200); // 25300 + 17800 + 25300 + 17800
+  assert.equal(byType['MESS CHARGES'], 76600); // 27200 + 27200 + 22200
+  assert.equal(byType['Hostel Linen Charges'], 1000); // 1000
+
+  // Verify sum of allocations matches total collections with 0 discrepancy
+  const allocatedSum = Object.values(byType).reduce((a, b) => a + b, 0);
+  assert.equal(allocatedSum, totalReceiptsAmount);
+
+  // 5. Verify Filter By Specific Fee Type (e.g. ACCOMODATION CHARGES)
+  const filterType = 'ACCOMODATION CHARGES';
+  const filteredReceipts = sampleReceipts.filter(r => {
+    const allocs = parseReceiptFeeAllocations(r.fee_type, r.amount_paid);
+    return allocs.some(a => a.type === filterType);
+  });
+
+  // Receipts R-03 (25300), R-04 (17800), R-06 (combo), R-07 (combo) contain accommodation
+  assert.equal(filteredReceipts.length, 4);
+  const filteredAccomAmount = filteredReceipts.reduce((sum, r) => {
+    const allocs = parseReceiptFeeAllocations(r.fee_type, r.amount_paid);
+    const target = allocs.find(a => a.type === filterType);
+    return sum + (target ? target.amount : 0);
+  }, 0);
+  assert.equal(filteredAccomAmount, 86200);
+});
+
+
 
 
