@@ -162,7 +162,7 @@ function getSheetNames() {
 function generateId(prefix) {
   var now = new Date();
   var year = now.getFullYear();
-  var rand = Math.floor(1000 + Math.random() * 9000);
+  var rand = Math.floor(10000 + Math.random() * 90000);
   return prefix + "-" + year + "-" + rand;
 }
 
@@ -3205,6 +3205,22 @@ function getStudentFeeLedger(appId, academicYear) {
       }
     }
 
+    // Build priority map from FEE_STRUCTURE_HEADS (headId → priority)
+    var priorityMap = {};
+    try {
+      var headSheet = getSheet("FEE_STRUCTURE_HEADS");
+      var headData = headSheet.getDataRange().getValues();
+      for (var h = 1; h < headData.length; h++) {
+        var hRow = headData[h];
+        if (!hRow[0] || hRow[0].toString().trim().toUpperCase() === "HEAD_ID") continue;
+        var hId = hRow[0].toString().trim();
+        var hPriority = parseInt(hRow[6]) || 99;
+        priorityMap[hId] = hPriority;
+      }
+    } catch (eHead) {
+      Logger.log("Could not load FEE_STRUCTURE_HEADS for priority: " + eHead.message);
+    }
+
     var results = [];
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
@@ -3218,6 +3234,10 @@ function getStudentFeeLedger(appId, academicYear) {
         var rowStudentName = (row[2] || "").toString().trim().toLowerCase();
         if (appId && rowAppId !== appId.toString().trim() && rowAppId.toLowerCase() !== appId.toString().trim().toLowerCase()) continue;
         var sInfo = studentInfoMap[rowAppId] || studentInfoMap[rowAppId.toLowerCase()] || studentInfoMap[rowStudentName] || { contactNumber: "", parentContact: "", collegeName: "", course: "", yearOfStudy: "", prn: rowAppId };
+        var rowHeadId   = (row[5] || "").toString().trim();
+        var rowStructId = (row[4] || "").toString().trim();
+        var isCustom    = (rowStructId.toUpperCase() === "CUSTOM" || rowHeadId.toUpperCase() === "CUSTOM");
+        var priority    = isCustom ? 999 : (priorityMap[rowHeadId] !== undefined ? priorityMap[rowHeadId] : 99);
         results.push({
           rowIndex:          i + 1,
           ledgerId:          row[0].toString().trim(),
@@ -3228,8 +3248,8 @@ function getStudentFeeLedger(appId, academicYear) {
           course:            sInfo.course || "",
           yearOfStudy:       sInfo.yearOfStudy || "",
           roomNumber:        (row[3] || "").toString().trim(),
-          structureId:       (row[4] || "").toString().trim(),
-          headId:            (row[5] || "").toString().trim(),
+          structureId:       rowStructId,
+          headId:            rowHeadId,
           headName:          (row[6] || "").toString().trim(),
           applicableMonth:   (row[7] || "").toString().trim(),
           applicableAmount:  parseFloat(row[8]) || 0,
@@ -3240,10 +3260,23 @@ function getStudentFeeLedger(appId, academicYear) {
           createdDate:       formatDateValue(row[13]),
           academicYear:      rowAcadYear || activeYear,
           contactNumber:     sInfo.contactNumber,
-          parentContact:     sInfo.parentContact
+          parentContact:     sInfo.parentContact,
+          priority:          priority,
+          isCustom:          isCustom
         });
       }
     }
+
+    // Sort by priority ascending so fees display in defined sequence order;
+    // within same priority, monthly entries stay in due-date order.
+    results.sort(function(a, b) {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      // secondary: due date chronologically
+      var dA = a.dueDate || "";
+      var dB = b.dueDate || "";
+      return dA < dB ? -1 : dA > dB ? 1 : 0;
+    });
+
     return { success: true, data: results };
   } catch (err) {
     return { success: false, message: err.message };
@@ -3865,6 +3898,75 @@ function cancelFeeReceipt(receiptId, reason) {
                 ldgSheet.getRange(j + 1, 10).setValue(newPaid);
                 ldgSheet.getRange(j + 1, 11).setValue(newBalance);
                 ldgSheet.getRange(j + 1, 13).setValue(newPaid > 0 ? "Partial" : "Pending");
+                break;
+              }
+            }
+          });
+        }
+        return { success: true };
+      }
+    }
+    return { success: false, message: "Receipt not found." };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function restoreFeeReceipt(receiptId) {
+  try {
+    var sheet = getSheet("FEE_RECEIPTS");
+    var data  = sheet.getDataRange().getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (!data[i][0] || data[i][0].toString().trim().toUpperCase() === "RECEIPT_ID") continue;
+      if (data[i][0].toString().trim() === receiptId.toString().trim()) {
+        var rowNum    = i + 1;
+        var oldAmount = parseFloat(data[i][6]) || 0;
+        var ledgerId  = (data[i][14] || "").toString().trim();
+        var currentStatus = (data[i][13] || "").toString().trim();
+
+        // Only restore if actually cancelled
+        if (currentStatus.toUpperCase().indexOf("CANCELLED") === -1 && (data[i][13] || "").toString().trim().toLowerCase() !== "cancelled") {
+          return { success: false, message: "Receipt is not cancelled; nothing to restore." };
+        }
+
+        // Restore receipt status to Active and clear CANCELLED remarks
+        sheet.getRange(rowNum, 14).setValue("Active");
+        sheet.getRange(rowNum, 13).setValue(""); // Clear CANCELLED remarks
+
+        // Re-apply the payment to ledger entries
+        if (ledgerId && oldAmount > 0) {
+          var paymentsToReApply = [];
+          if (ledgerId.indexOf("{") === 0 || ledgerId.indexOf("[") === 0) {
+            try {
+              var parsed = JSON.parse(ledgerId);
+              if (Array.isArray(parsed)) {
+                paymentsToReApply = parsed;
+              } else {
+                for (var key in parsed) {
+                  paymentsToReApply.push({ id: key, amt: parseFloat(parsed[key]) || 0 });
+                }
+              }
+            } catch (e) {
+              // Fallback
+            }
+          }
+          if (paymentsToReApply.length === 0) {
+            paymentsToReApply.push({ id: ledgerId, amt: oldAmount });
+          }
+
+          var ldgSheet = getSheet("STUDENT_FEE_LEDGER");
+          var ldgData  = ldgSheet.getDataRange().getValues();
+          paymentsToReApply.forEach(function(item) {
+            for (var j = 0; j < ldgData.length; j++) {
+              if (!ldgData[j][0] || ldgData[j][0].toString().trim().toUpperCase() === "LEDGER_ID") continue;
+              if (ldgData[j][0].toString().trim() === item.id.toString().trim()) {
+                var applicable  = parseFloat(ldgData[j][8]) || 0;
+                var currentPaid = parseFloat(ldgData[j][9]) || 0;
+                var newPaid     = currentPaid + item.amt;
+                var newBalance  = Math.max(0, applicable - newPaid);
+                ldgSheet.getRange(j + 1, 10).setValue(newPaid);
+                ldgSheet.getRange(j + 1, 11).setValue(newBalance);
+                ldgSheet.getRange(j + 1, 13).setValue(newBalance <= 0 ? "Paid" : (newPaid > 0 ? "Partial" : "Pending"));
                 break;
               }
             }

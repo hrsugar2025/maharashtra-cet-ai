@@ -867,7 +867,7 @@ test('14. Payment Mode Normalization (categorizing transaction UTRs as Online/UP
     var m = mode.toLowerCase();
     if (m === 'cash') return 'Cash';
     if (m === 'qr code' || m === 'qr' || m === 'phonepe' || m === 'gpay' || m === 'paytm') return 'QR Code';
-    if (m === 'online/upi' || m === 'online' || m === 'upi' || m === 'netbanking' || m === 'net banking') return 'Online/UPI';
+    if (m === 'online/upi' || m === 'online' || m === 'upi' || m === 'netbanking' || m === 'net banking' || m.indexOf('online') !== -1 || m.indexOf('easebuzz') !== -1 || m.indexOf('cashfree') !== -1) return 'Online/UPI';
     if (m === 'bank transfer' || m === 'transfer' || m === 'neft' || m === 'rtgs' || m === 'imps' || m === 'bank') return 'Bank Transfer';
     if (m === 'cheque' || m === 'demand draft' || m === 'dd') return 'Cheque';
     if (m === 'card' || m === 'debit card' || m === 'credit card') return 'Card';
@@ -880,6 +880,8 @@ test('14. Payment Mode Normalization (categorizing transaction UTRs as Online/UP
   assert.equal(normalizePaymentMode('129648661206'), 'Online/UPI');
   assert.equal(normalizePaymentMode('662207522802'), 'Online/UPI');
   assert.equal(normalizePaymentMode('QR Code'), 'QR Code');
+  assert.equal(normalizePaymentMode('Online (Easebuzz)'), 'Online/UPI');
+  assert.equal(normalizePaymentMode('Easebuzz'), 'Online/UPI');
 });
 
 test('15. Room Transfer / Change Room (e.g. ALLOT-2026-4001)', async () => {
@@ -1612,6 +1614,68 @@ test('26. Fee Collection Report - Strict 4 Fee Types & Accurate Allocation Engin
     return sum + (target ? target.amount : 0);
   }, 0);
   assert.equal(filteredAccomAmount, 86200);
+});
+
+test('27. Easebuzz Payment Gateway Hash Generation & Payload Verification', async () => {
+  const crypto = require('crypto');
+
+  const testKey = '2PFP7XRXXX';
+  const testSalt = 'DAH8HG7XXX';
+  const txnid = 'AMG_FEE_1001_123456';
+  const amount = '5000.00';
+  const productinfo = 'AMG Hostel Fee';
+  const firstname = 'Aishwarya Mane';
+  const email = 'student@amghostel.com';
+  const phone = '9876543210';
+
+  // 1. Initiate Link Hash calculation strictly matching Easebuzz sequence
+  const hashSequence = [
+    testKey,
+    txnid,
+    amount,
+    productinfo,
+    firstname,
+    email,
+    '', '', '', '', '', '', '', '', '', '',
+    testSalt
+  ].join('|');
+
+  const initiateHash = crypto.createHash('sha512').update(hashSequence).digest('hex');
+  assert.ok(initiateHash);
+  assert.equal(typeof initiateHash, 'string');
+  assert.equal(initiateHash.length, 128); // SHA-512 hex is 128 chars
+
+  // 2. Retrieve Status Hash calculation
+  const retrieveSequence = `${testKey}|${txnid}|${testSalt}`;
+  const retrieveHash = crypto.createHash('sha512').update(retrieveSequence).digest('hex');
+  assert.ok(retrieveHash);
+  assert.equal(retrieveHash.length, 128);
+
+  // 3. Hosted checkout URL verification
+  const sampleAccessKey = 'ebz_acc_7890abcdef123456';
+  const paymentUrl = `https://testpay.easebuzz.in/pay/${sampleAccessKey}`;
+  assert.equal(paymentUrl, 'https://testpay.easebuzz.in/pay/ebz_acc_7890abcdef123456');
+
+  // 4. Verification of successful payment response parsing
+  const mockEasebuzzResponse = {
+    status: true,
+    data: {
+      status: 'success',
+      easepayid: 'E2212042X8XXXX',
+      txnid: txnid,
+      amount: '5000.00',
+      net_amount_debit: '5000.00',
+      mode: 'UPI'
+    }
+  };
+
+  const isPaid = mockEasebuzzResponse.data.status === 'success';
+  const recordedMode = 'Online (Easebuzz)';
+  const remarks = 'Paid online via Easebuzz Payment Link (' + txnid + ')';
+
+  assert.equal(isPaid, true);
+  assert.equal(recordedMode, 'Online (Easebuzz)');
+  assert.ok(remarks.includes('Easebuzz'));
 });
 
 

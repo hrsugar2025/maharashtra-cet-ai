@@ -2843,15 +2843,15 @@ if (typeof window.google.script.run === 'undefined') {
             </button>
           </div>
         </div>
-        <!-- CASHFREE PAYMENT GATEWAY CARD -->
+        <!-- EASEBUZZ PAYMENT GATEWAY CARD -->
         <div class="card mt-3" style="border: 2px solid #6366F1; background: #EEF2FF;">
           <div class="card-header">
             <div>
               <div class="card-title" style="color: #3730A3; display: flex; align-items: center; gap: 8px;">
                 <span class="material-icons-round" style="color: #4F46E5;">payments</span>
-                Cashfree Payment Gateway &amp; WhatsApp Integration
+                Easebuzz Payment Gateway &amp; WhatsApp Integration
               </div>
-              <div class="card-sub" style="color: #4338CA;">Configure Cashfree API credentials to generate instant online payment links and QR codes for parents &amp; students</div>
+              <div class="card-sub" style="color: #4338CA;">Configure Easebuzz API credentials (Merchant Key &amp; Salt) to generate instant online payment links and QR codes for parents &amp; students</div>
             </div>
             <span id="cashfree-env-badge" style="background: #4F46E5; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
               <span style="width: 6px; height: 6px; border-radius: 50%; background: #A5B4FC;"></span> Sandbox (Test)
@@ -2867,14 +2867,14 @@ if (typeof window.google.script.run === 'undefined') {
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label" style="color:#3730A3;">Cashfree App ID / Client ID *</label>
-                <input type="text" id="cfg-cashfree-appid" class="form-input" placeholder="e.g. TEST10... / PROD..." />
+                <label class="form-label" style="color:#3730A3;">Easebuzz Merchant Key *</label>
+                <input type="text" id="cfg-cashfree-appid" class="form-input" placeholder="e.g. 2PFP7XRXXX / Live Key" />
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label" style="color:#3730A3;">Cashfree Secret Key *</label>
+              <label class="form-label" style="color:#3730A3;">Easebuzz Salt Key *</label>
               <div style="position:relative;">
-                <input type="password" id="cfg-cashfree-secret" class="form-input" placeholder="Enter Cashfree Secret Key" style="padding-right:40px;" />
+                <input type="password" id="cfg-cashfree-secret" class="form-input" placeholder="Enter Easebuzz Salt Key" style="padding-right:40px;" />
                 <button type="button" class="btn btn-ghost btn-sm" onclick="toggleCashfreeSecretVisibility()" style="position:absolute;right:4px;top:4px;bottom:4px;padding:0 8px;border:none;" title="Show/Hide Key">
                   <span class="material-icons-round" id="cfg-cashfree-secret-icon" style="font-size:18px;">visibility</span>
                 </button>
@@ -3320,12 +3320,12 @@ if (typeof window.google.script.run === 'undefined') {
           <span id="collect-multiple-total-display" style="color: var(--success);">₹0</span>
         </div>
       </div>
-      <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Online (Cashfree)</option></select></div>
+      <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Online (Easebuzz)</option><option>Online (Cashfree)</option></select></div>
       <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="QR/Bank reference (optional)"/></div>
       <div class="form-group"><label class="form-label">Remarks</label><input type="text" id="collect-remarks" class="form-input" placeholder="Optional notes"/></div>
       <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); text-align: center;">
         <button type="button" class="btn btn-ghost btn-sm" onclick="openCashfreeFromCollectModal()" style="border-color: #10B981; color: #059669; font-weight: 600; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-          <span class="material-icons-round" style="font-size: 16px; color: #10B981;">flash_on</span> Or Generate Cashfree Pay Link &amp; WhatsApp
+          <span class="material-icons-round" style="font-size: 16px; color: #10B981;">flash_on</span> Or Generate Easebuzz Pay Link &amp; WhatsApp
         </button>
       </div>
     </div>
@@ -3333,13 +3333,13 @@ if (typeof window.google.script.run === 'undefined') {
   </div>
 </div>
 
-<!-- CASHFREE PAYMENT LINK & WHATSAPP MODAL -->
+<!-- EASEBUZZ PAYMENT LINK & WHATSAPP MODAL -->
 <div id="modal-cashfree-link" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-cashfree-link')">
   <div class="modal" style="max-width:540px;">
     <div class="modal-header" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; border-top-left-radius: var(--radius); border-top-right-radius: var(--radius);">
       <div class="modal-title" style="color: white; display: flex; align-items: center; gap: 8px;">
         <span class="material-icons-round">flash_on</span>
-        Cashfree Online Payment &amp; WhatsApp
+        Easebuzz Online Payment &amp; WhatsApp
       </div>
       <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-cashfree-link')" style="color: white; border: none;">
         <span class="material-icons-round">close</span>
@@ -3367,7 +3367,7 @@ if (typeof window.google.script.run === 'undefined') {
       <!-- Action: Generate Link Button -->
       <div style="margin-top: 10px; margin-bottom: 16px;">
         <button class="btn btn-primary btn-full" id="cf-btn-generate" onclick="doGenerateCashfreeLink()" style="background: #059669; border-color: #059669; font-weight: 600; padding: 12px;">
-          <span class="material-icons-round">link</span> Generate Cashfree Payment Link
+          <span class="material-icons-round">link</span> Generate Easebuzz Payment Link
         </button>
       </div>
 
@@ -4360,6 +4360,26 @@ function syncUiUserProfile() {
   if (tbRole) tbRole.textContent = u.role || 'Admin';
 }
 
+function generateUniqueReceiptId(year) {
+  var y = (year || new Date().getFullYear()).toString().substring(0, 4);
+  var receiptId = '';
+  var exists = true;
+  var attempts = 0;
+  while (exists && attempts < 100) {
+    attempts++;
+    var rand = Math.floor(10000 + Math.random() * 90000);
+    receiptId = 'RCPT-' + y + '-' + rand;
+    exists = false;
+    if (typeof allFees !== 'undefined' && Array.isArray(allFees)) {
+      exists = allFees.some(function(f) {
+        return f && ((f.receiptId || f.receipt_id || '').toString().trim() === receiptId);
+      });
+    }
+  }
+  return receiptId;
+}
+window.generateUniqueReceiptId = generateUniqueReceiptId;
+
 function getNormalizedAppId(id) {
   if (!id) return "";
   var s = id.toString().trim();
@@ -4468,7 +4488,7 @@ function normalizePaymentMode(modeStr, txnIdStr) {
   var m = mode.toLowerCase();
   if (m === 'cash') return 'Cash';
   if (m === 'qr code' || m === 'qr' || m === 'phonepe' || m === 'gpay' || m === 'paytm') return 'QR Code';
-  if (m === 'online/upi' || m === 'online' || m === 'upi' || m === 'netbanking' || m === 'net banking') return 'Online/UPI';
+  if (m === 'online/upi' || m === 'online' || m === 'upi' || m === 'netbanking' || m === 'net banking' || m.indexOf('online') !== -1 || m.indexOf('easebuzz') !== -1 || m.indexOf('cashfree') !== -1) return 'Online/UPI';
   if (m === 'bank transfer' || m === 'transfer' || m === 'neft' || m === 'rtgs' || m === 'imps' || m === 'bank') return 'Bank Transfer';
   if (m === 'cheque' || m === 'demand draft' || m === 'dd') return 'Cheque';
   if (m === 'card' || m === 'debit card' || m === 'credit card') return 'Card';
@@ -5732,9 +5752,8 @@ window.google = {
 
           // ── RECORD SINGLE FEE RECEIPT & AUTO-SETTLE DUES ─────────
           addFeeReceipt: function(feeData) {
-            var rand = Math.floor(1000 + Math.random() * 9000);
             var receiptYear = feeData.feeYear || new Date().getFullYear();
-            var receiptId = 'RCPT-' + receiptYear + '-' + rand;
+            var receiptId = generateUniqueReceiptId(receiptYear);
             var today = new Date();
             var isoDate = today.toISOString().split('T')[0];
             var amt = parseFloat(feeData.amountPaid) || 0;
@@ -5866,8 +5885,8 @@ window.google = {
               }).eq('ledger_id', ledgerId).then(function(upRes) {
                 if (upRes.error) return failureCb(upRes.error);
 
-                var rand = Math.floor(1000 + Math.random() * 9000);
-                var receiptId = 'RCPT-' + (ldg.academic_year ? ldg.academic_year.substring(0, 4) : new Date().getFullYear()) + '-' + rand;
+                var y = ldg.academic_year ? ldg.academic_year.substring(0, 4) : new Date().getFullYear();
+                var receiptId = generateUniqueReceiptId(y);
                 var isoDate = new Date().toISOString().split('T')[0];
 
                 _supabase.from('students').select('room_number').eq('app_id', ldg.app_id).then(function(stRes) {
@@ -5959,8 +5978,8 @@ window.google = {
               });
 
               Promise.all(updatePromises).then(function() {
-                var rand = Math.floor(1000 + Math.random() * 9000);
-                var receiptId = 'RCPT-' + (acadYr ? acadYr.substring(0, 4) : new Date().getFullYear()) + '-' + rand;
+                var y = acadYr ? acadYr.substring(0, 4) : new Date().getFullYear();
+                var receiptId = generateUniqueReceiptId(y);
                 var isoDate = new Date().toISOString().split('T')[0];
 
                 _supabase.from('students').select('room_number').eq('app_id', appId).then(function(stRes) {
@@ -6092,6 +6111,82 @@ window.google = {
                   }).eq('receipt_id', cleanRcptId).then(function(res) {
                     if (res.error) failureCb(res.error);
                     else successCb({ success: true, message: 'Receipt ' + cleanRcptId + ' cancelled and ledger reversed successfully.' });
+                  }).catch(failureCb);
+                }).catch(failureCb);
+              }).catch(failureCb);
+            }).catch(failureCb);
+          },
+
+          restoreFeeReceipt: function(receiptId) {
+            var cleanRcptId = (receiptId || '').toString().trim();
+            if (!cleanRcptId) return failureCb(new Error('Receipt ID is required.'));
+
+            _supabase.from('fee_receipts').select('*').eq('receipt_id', cleanRcptId).then(function(rRes) {
+              var rcpt = (rRes.data && rRes.data[0]);
+              if (!rcpt) return failureCb(new Error('Receipt ' + cleanRcptId + ' not found.'));
+              if ((rcpt.status || '').toLowerCase() !== 'cancelled') {
+                return failureCb(new Error('Receipt is not cancelled; nothing to restore.'));
+              }
+
+              var appId = rcpt.app_id;
+              var rcptAmount = parseFloat(rcpt.amount_paid) || parseFloat(rcpt.amount) || 0;
+              var rcptFeeType = (rcpt.fee_type || '').toString().trim().toUpperCase();
+
+              // Re-apply the payment to the ledger
+              _supabase.from('student_fee_ledger').select('*').eq('app_id', appId).then(function(lRes) {
+                var ledgerRows = lRes.data || [];
+                var ledgerUpdates = [];
+
+                var matchingLedger = ledgerRows.find(function(r) {
+                  var hName = (r.head_name || '').toString().trim().toUpperCase();
+                  return hName === rcptFeeType || rcptFeeType.indexOf(hName) !== -1 || hName.indexOf(rcptFeeType) !== -1;
+                });
+
+                if (matchingLedger && rcptAmount > 0) {
+                  var curPaid = parseFloat(matchingLedger.paid_amount) || 0;
+                  var appAmt = parseFloat(matchingLedger.applicable_amount) || 0;
+                  var newPaid = curPaid + rcptAmount;
+                  var newBal = Math.max(0, appAmt - newPaid);
+                  var newSt = newBal <= 0 ? 'Paid' : (newPaid > 0 ? 'Partial' : 'Pending');
+
+                  ledgerUpdates.push(_supabase.from('student_fee_ledger').update({
+                    paid_amount: newPaid,
+                    balance: newBal,
+                    status: newSt
+                  }).eq('ledger_id', matchingLedger.ledger_id));
+                } else if (rcptAmount > 0) {
+                  // Fallback: apply to first pending/partial ledger row for this student
+                  var pendingRows = ledgerRows.filter(function(r) {
+                    return (parseFloat(r.balance) || 0) > 0;
+                  });
+                  var remToApply = rcptAmount;
+                  pendingRows.forEach(function(r) {
+                    if (remToApply <= 0) return;
+                    var curPaid = parseFloat(r.paid_amount) || 0;
+                    var appAmt = parseFloat(r.applicable_amount) || 0;
+                    var curBal = parseFloat(r.balance) || 0;
+                    var apply = Math.min(remToApply, curBal);
+                    var newPaid = curPaid + apply;
+                    var newBal = Math.max(0, appAmt - newPaid);
+                    var newSt = newBal <= 0 ? 'Paid' : (newPaid > 0 ? 'Partial' : 'Pending');
+
+                    ledgerUpdates.push(_supabase.from('student_fee_ledger').update({
+                      paid_amount: newPaid,
+                      balance: newBal,
+                      status: newSt
+                    }).eq('ledger_id', r.ledger_id));
+
+                    remToApply -= apply;
+                  });
+                }
+
+                Promise.all(ledgerUpdates).then(function() {
+                  _supabase.from('fee_receipts').update({
+                    status: 'Active',
+                    remarks: ''
+                  }).eq('receipt_id', cleanRcptId).then(function(res) {
+                    if (res.error) failureCb(res.error);
+                    else successCb({ success: true, message: 'Receipt ' + cleanRcptId + ' restored successfully.' });
                   }).catch(failureCb);
                 }).catch(failureCb);
               }).catch(failureCb);
@@ -10472,19 +10567,24 @@ function renderSFD(){
     tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><span class="material-icons-round" style="color:var(--warning);">receipt_long</span><h3>No fee records exist for this student</h3><p>Click "Apply Fee Structure Now" above to generate their fee ledger entries.</p></div></td></tr>';
     return;
   }
-  var entries=_sfdEntries;
-  if(_sfdFilter==='Pending') entries=entries.filter(function(e){return e.status==='Pending'||e.status==='Partial';});
-  else if(_sfdFilter==='Paid') entries=entries.filter(function(e){return e.status==='Paid';});
-  // Summary
-  var totAmt=_sfdEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
-  var totPaid=_sfdEntries.reduce(function(s,e){return s+e.paidAmount;},0);
-  var totBal=_sfdEntries.reduce(function(s,e){return s+e.balance;},0);
-  var paidCnt=_sfdEntries.filter(function(e){return e.status==='Paid';}).length;
-  var pendCnt=_sfdEntries.filter(function(e){return e.status!=='Paid';}).length;
+  var structuredEntries = _sfdEntries.filter(function(e){ return !e.isCustom; });
+  var customEntries     = _sfdEntries.filter(function(e){ return  e.isCustom; });
+  var entries = _sfdFilter === 'Pending'
+    ? structuredEntries.filter(function(e){return e.status==='Pending'||e.status==='Partial';})
+    : _sfdFilter === 'Paid'
+      ? structuredEntries.filter(function(e){return e.status==='Paid';})
+      : structuredEntries; // 'All Ledger' shows only structured
+  // Summary — only from structured (fee-structure) entries
+  var totAmt  = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
+  var totPaid = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totBal  = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
+  var paidCnt = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
+  var pendCnt = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
+  var customPaid = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
   document.getElementById('sfd-summary').innerHTML=
-    '<div style="background:rgba(124,58,237,0.1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;">'+'<div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Applicable</div>'+'<div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">'+fmtMoney(totAmt)+'</div>'+'<div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+_sfdEntries.length+' entries</div></div>'
-    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;">'+'<div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div>'+'<div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div>'+'<div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries</div></div>'
-    +'<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-sm);padding:14px 18px;">'+'<div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Outstanding Balance</div>'+'<div style="font-size:1.4rem;font-weight:800;color:var(--danger);">'+fmtMoney(totBal)+'</div>'+'<div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+pendCnt+' pending entries</div></div>';
+    '<div style="background:rgba(124,58,237,0.1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Applicable</div><div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">'+fmtMoney(totAmt)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+structuredEntries.length+' entries</div></div>'
+    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+' </div></div>'
+    +'<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Outstanding Balance</div><div style="font-size:1.4rem;font-weight:800;color:var(--danger);">'+fmtMoney(totBal)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+pendCnt+' pending entries</div></div>';
   document.getElementById('sfd-total-balance').textContent=totBal>0?'Outstanding: '+fmtMoney(totBal):'✔ All fees cleared!';
   document.getElementById('sfd-total-balance').style.color=totBal>0?'var(--danger)':'var(--success)';
 
@@ -10495,16 +10595,23 @@ function renderSFD(){
 
   // Table
   var tbody=document.getElementById('sfd-tbody');
-  if(!entries.length){tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><span class="material-icons-round">check_circle</span><h3>No entries for this filter</h3></div></td></tr>';return;}
-  tbody.innerHTML=entries.map(function(e){
+  var allDisplayEntries = entries.concat(
+    _sfdFilter === 'Pending' ? [] : customEntries  // show CUSTOM rows in All/Paid view
+  );
+  if(!allDisplayEntries.length){tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><span class="material-icons-round">check_circle</span><h3>No entries for this filter</h3></div></td></tr>';return;}
+  tbody.innerHTML=allDisplayEntries.map(function(e){
     var pct=e.applicableAmount>0?Math.round((e.paidAmount/e.applicableAmount)*100):0;
     var bc=e.status==='Paid'?'paid':e.status==='Partial'?'partial':'pending';
-    var checkboxHtml = e.status !== 'Paid'
+    var rowStyle = e.isCustom ? ' style="background:rgba(245,158,11,0.05);"' : '';
+    var headDisplay = e.isCustom
+      ? e.headName + ' <span style="font-size:0.65rem;background:rgba(245,158,11,0.15);color:var(--warning);border:1px solid rgba(245,158,11,0.3);border-radius:3px;padding:1px 5px;vertical-align:middle;">Extra</span>'
+      : e.headName;
+    var checkboxHtml = (e.status !== 'Paid' && !e.isCustom)
       ? '<td style="text-align: center;"><input type="checkbox" class="sfd-row-select" data-ledger-id="'+e.ledgerId+'" data-balance="'+e.balance+'" onclick="updateSelectedSfdCount()"/></td>'
       : '<td style="text-align: center;">-</td>';
-    return '<tr>'
+    return '<tr'+rowStyle+'>'
       + checkboxHtml
-      +'<td><strong>'+e.headName+'</strong></td>'
+      +'<td><strong>'+headDisplay+'</strong></td>'
       +'<td style="font-size:0.8rem;color:var(--text2);">'+e.applicableMonth+'</td>'
       +'<td style="font-size:0.8rem;">'+e.dueDate+'</td>'
       +'<td style="font-weight:600;">'+fmtMoney(e.applicableAmount)+'</td>'
@@ -10512,13 +10619,14 @@ function renderSFD(){
       +'<td><div style="font-weight:700;color:'+(e.balance>0?'var(--danger)':'var(--success)')+';">'+fmtMoney(e.balance)+'</div>'
         +'<div class="balance-bar"><div class="balance-bar-fill '+bc+'" style="width:'+pct+'%"></div></div></td>'
       +'<td>'+statusBadge(e.status)+'</td>'
-      +'<td>'+(e.status!=='Paid'
-        ?'<div style="display:flex;gap:4px;"><button class="btn btn-success btn-sm" onclick="openCollectFromSFD(\''+e.ledgerId+'\')">'+'<span class="material-icons-round" style="font-size:13px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeFromSFD(\''+e.ledgerId+'\')" title="Cashfree Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:13px;">flash_on</span> Link</button></div>'
+      +'<td>'+(e.status!=='Paid' && !e.isCustom
+        ?'<div style="display:flex;gap:4px;"><button class="btn btn-success btn-sm" onclick="openCollectFromSFD(\''+e.ledgerId+'\')">'+'<span class="material-icons-round" style="font-size:13px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeFromSFD(\''+e.ledgerId+'\')" title="Easebuzz Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:13px;">flash_on</span> Link</button></div>'
         :'<span style="color:var(--success);font-size:0.8rem;">✔ Paid</span>')
       +'</td>'
       +'</tr>';
   }).join('');
 }
+
 
 function doApplyFeeForCurrentStudent() {
   showToast('Applying fee structure for ' + _currentSfdName + '...', 'info');
@@ -10759,6 +10867,8 @@ function renderSFDReceipts(){
     if (f.status === 'Active') {
       actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+f.receiptId+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
               + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+f.receiptId+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
+    } else if ((f.status || '').toLowerCase() === 'cancelled') {
+      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+f.receiptId+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
     return '<tr>'
       + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">' + f.receiptId + '</td>'
@@ -10908,6 +11018,33 @@ function doCancelReceipt(receiptId){
   });
 }
 
+function doRestoreReceipt(receiptId){
+  showConfirm({
+    title: 'Restore Fee Receipt?',
+    msg: 'Restore Receipt ' + receiptId + ' to Active status?\n\nThis will re-apply the payment to the student\'s ledger and remove the CANCELLED status.',
+    icon: 'check_circle',
+    iconColor: 'green',
+    okLabel: 'Yes, Restore',
+    okClass: 'btn-success',
+    onConfirm: function(){
+      google.script.run.withSuccessHandler(function(res){
+        if (res.success) {
+          showToast('Receipt restored successfully!', 'success');
+          if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
+            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+          }
+          loadFees();
+          if (typeof loadPendingFees === 'function') loadPendingFees();
+        } else {
+          showToast('Error: ' + res.message, 'error');
+        }
+      }).withFailureHandler(function(err){
+        showToast('Server error: ' + err.message, 'error');
+      }).restoreFeeReceipt(receiptId);
+    }
+  });
+}
+
 function openChangeRoom(allotmentId, studentName, roomNumber, roomType){
   document.getElementById('cr-allot-id').value = allotmentId;
   document.getElementById('cr-current-info').innerHTML = '<strong>Student:</strong> ' + escapeHtml(studentName) + '<br><strong>Current Room:</strong> Room ' + escapeHtml(roomNumber) + ' (' + escapeHtml(roomType) + ')';
@@ -11052,7 +11189,7 @@ async function doAddReceipt() {
   var remarks = document.getElementById('fee-remarks') ? document.getElementById('fee-remarks').value : '';
   var feeMonth = document.getElementById('fee-month') ? (document.getElementById('fee-month').value || 'N/A') : 'N/A';
   var feeYear = document.getElementById('fee-year') ? (document.getElementById('fee-year').value || '2026') : '2026';
-  var receiptId = 'RCPT-2026-' + Math.floor(1000 + Math.random() * 9000);
+  var receiptId = generateUniqueReceiptId(feeYear);
   var todayIso = new Date().toISOString().split('T')[0];
 
   showToast('Saving receipt and settling dues...', 'info');
@@ -12578,7 +12715,7 @@ function renderPendingFees(){
       + '<td><div style="font-weight:700;color:' + (e.balance > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + fmtMoney(e.balance) + '</div><div class="balance-bar"><div class="balance-bar-fill ' + bc + '" style="width:' + pct + '%"></div></div></td>'
       + '<td style="font-size:0.8rem;">' + escapeHtml(e.dueDate || '-') + '</td>'
       + '<td>' + statusBadge(e.status) + '</td>'
-      + '<td>' + (e.status !== 'Paid' ? '<div style="display:flex;gap:4px;"><button class="btn btn-success btn-sm" onclick="openCollectModal(\'' + e.ledgerId + '\')"><span class="material-icons-round" style="font-size:14px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeLinkModal(\'' + e.ledgerId + '\')" title="Generate Cashfree Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:14px;">flash_on</span> Link</button></div>' : '<span style="color:var(--success);font-size:0.8rem;">&#x2714; Paid</span>') + '</td>'
+      + '<td>' + (e.status !== 'Paid' ? '<div style="display:flex;gap:4px;"><button class="btn btn-success btn-sm" onclick="openCollectModal(\'' + e.ledgerId + '\')"><span class="material-icons-round" style="font-size:14px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeLinkModal(\'' + e.ledgerId + '\')" title="Generate Easebuzz Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:14px;">flash_on</span> Link</button></div>' : '<span style="color:var(--success);font-size:0.8rem;">&#x2714; Paid</span>') + '</td>'
       + '</tr>';
   }).join('');
 }
@@ -12780,25 +12917,27 @@ function doCollectPayment(ledgerId){
 }
 
 // ─────────────────────────────────────────────────────────────
-// CASHFREE PAYMENT GATEWAY & WHATSAPP INTEGRATION LOGIC
+// EASEBUZZ PAYMENT GATEWAY & WHATSAPP INTEGRATION LOGIC
 // ─────────────────────────────────────────────────────────────
-var _currentCashfreeLedger = null;
-var _currentCashfreeLinkData = null;
+var _currentEasebuzzLedger = null;
+var _currentEasebuzzLinkData = null;
 
-function getSavedCashfreeConfig() {
+function getSavedEasebuzzConfig() {
   try {
-    var raw = localStorage.getItem('amg_cashfree_config');
+    var raw = localStorage.getItem('amg_easebuzz_config') || localStorage.getItem('amg_cashfree_config');
     if (raw) return JSON.parse(raw);
   } catch(e){}
   return {
     env: 'sandbox',
+    merchantKey: '',
+    salt: '',
     appId: '',
     secretKey: ''
   };
 }
 
-function updateCashfreeEnvBadge(env) {
-  var badge = document.getElementById('cashfree-env-badge');
+function updateEasebuzzEnvBadge(env) {
+  var badge = document.getElementById('cashfree-env-badge') || document.getElementById('easebuzz-env-badge');
   if (!badge) return;
   if (env === 'production') {
     badge.style.background = '#10B981';
@@ -12809,9 +12948,9 @@ function updateCashfreeEnvBadge(env) {
   }
 }
 
-function toggleCashfreeSecretVisibility() {
-  var inp = document.getElementById('cfg-cashfree-secret');
-  var icon = document.getElementById('cfg-cashfree-secret-icon');
+function toggleEasebuzzSecretVisibility() {
+  var inp = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-secret');
+  var icon = document.getElementById('cfg-cashfree-secret-icon') || document.getElementById('cfg-easebuzz-secret-icon');
   if (!inp) return;
   if (inp.type === 'password') {
     inp.type = 'text';
@@ -12822,61 +12961,78 @@ function toggleCashfreeSecretVisibility() {
   }
 }
 
-function loadCashfreeSettings() {
-  var cfg = getSavedCashfreeConfig();
-  var envEl = document.getElementById('cfg-cashfree-env');
-  var appEl = document.getElementById('cfg-cashfree-appid');
-  var secEl = document.getElementById('cfg-cashfree-secret');
-  if (envEl) envEl.value = cfg.env || 'sandbox';
-  if (appEl) appEl.value = cfg.appId || '';
-  if (secEl) secEl.value = cfg.secretKey || '';
-  updateCashfreeEnvBadge(cfg.env || 'sandbox');
+function loadEasebuzzSettings() {
+  var cfg = getSavedEasebuzzConfig();
+  var envEl = document.getElementById('cfg-cashfree-env') || document.getElementById('cfg-easebuzz-env');
+  var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
+  var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
+  var activeEnv = cfg.env || 'sandbox';
+  if (envEl) envEl.value = activeEnv;
+  if (appEl) appEl.value = cfg.merchantKey || cfg.appId || '';
+  if (secEl) secEl.value = cfg.salt || cfg.secretKey || '';
+  updateEasebuzzEnvBadge(activeEnv);
 }
 
-function saveCashfreeSettings() {
-  var env = (document.getElementById('cfg-cashfree-env').value || 'sandbox').trim();
-  var appId = (document.getElementById('cfg-cashfree-appid').value || '').trim();
-  var secretKey = (document.getElementById('cfg-cashfree-secret').value || '').trim();
+function saveEasebuzzSettings() {
+  var envEl = document.getElementById('cfg-cashfree-env') || document.getElementById('cfg-easebuzz-env');
+  var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
+  var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
 
-  if (!appId) {
-    showToast('Please enter Cashfree App ID / Client ID.', 'error');
+  var env = (envEl ? envEl.value : 'sandbox').trim();
+  var merchantKey = (appEl ? appEl.value : '').trim();
+  var salt = (secEl ? secEl.value : '').trim();
+
+  if (!merchantKey) {
+    showToast('Please enter Easebuzz Merchant Key.', 'error');
     return;
   }
-  if (!secretKey) {
-    showToast('Please enter Cashfree Secret Key.', 'error');
+  if (!salt) {
+    showToast('Please enter Easebuzz Salt Key.', 'error');
     return;
   }
 
-  var cfg = { env: env, appId: appId, secretKey: secretKey };
+  var cfg = {
+    env: env,
+    merchantKey: merchantKey,
+    salt: salt,
+    appId: merchantKey,
+    secretKey: salt
+  };
+
+  localStorage.setItem('amg_easebuzz_config', JSON.stringify(cfg));
   localStorage.setItem('amg_cashfree_config', JSON.stringify(cfg));
-  updateCashfreeEnvBadge(env);
-  showToast('Cashfree settings saved successfully!', 'success');
+  updateEasebuzzEnvBadge(env);
+  showToast('Easebuzz settings saved successfully!', 'success');
 }
 
-function testCashfreeConnection() {
-  var env = (document.getElementById('cfg-cashfree-env').value || 'sandbox').trim();
-  var appId = (document.getElementById('cfg-cashfree-appid').value || '').trim();
-  var secretKey = (document.getElementById('cfg-cashfree-secret').value || '').trim();
+function testEasebuzzConnection() {
+  var envEl = document.getElementById('cfg-cashfree-env') || document.getElementById('cfg-easebuzz-env');
+  var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
+  var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
 
-  if (!appId || !secretKey) {
-    showToast('Please enter both App ID and Secret Key to test.', 'warning');
+  var env = (envEl ? envEl.value : 'sandbox').trim();
+  var merchantKey = (appEl ? appEl.value : '').trim();
+  var salt = (secEl ? secEl.value : '').trim();
+
+  if (!merchantKey || !salt) {
+    showToast('Please enter both Merchant Key and Salt to test connection.', 'warning');
     return;
   }
 
-  var btn = document.getElementById('btn-test-cashfree');
+  var btn = document.getElementById('btn-test-cashfree') || document.getElementById('btn-test-easebuzz');
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Testing...';
   }
 
-  fetch('/api/cashfree', {
+  fetch('/api/easebuzz', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'test_connection',
       env: env,
-      appId: appId,
-      secretKey: secretKey
+      merchantKey: merchantKey,
+      salt: salt
     })
   }).then(function(res){ return res.json(); }).then(function(data){
     if (btn) {
@@ -12884,7 +13040,7 @@ function testCashfreeConnection() {
       btn.innerHTML = '<span class="material-icons-round" style="font-size: 18px;">check_circle</span> Test Connection';
     }
     if (data.success) {
-      showToast(data.message || 'Successfully connected to Cashfree!', 'success');
+      showToast(data.message || 'Successfully connected to Easebuzz!', 'success');
     } else {
       showToast('Connection failed: ' + (data.message || 'Invalid credentials'), 'error');
     }
@@ -12893,11 +13049,11 @@ function testCashfreeConnection() {
       btn.disabled = false;
       btn.innerHTML = '<span class="material-icons-round" style="font-size: 18px;">check_circle</span> Test Connection';
     }
-    showToast('Failed to connect to Cashfree API: ' + err.message, 'error');
+    showToast('Failed to connect to Easebuzz API: ' + err.message, 'error');
   });
 }
 
-function openCashfreeLinkModal(ledgerId) {
+function openEasebuzzLinkModal(ledgerId) {
   var entry = (allPendingFees || []).find(function(e){ return e.ledgerId === ledgerId; });
   if (!entry && typeof _sfdEntries !== 'undefined' && _sfdEntries) {
     entry = _sfdEntries.find(function(e){ return e.ledgerId === ledgerId; });
@@ -12907,8 +13063,8 @@ function openCashfreeLinkModal(ledgerId) {
     return;
   }
 
-  _currentCashfreeLedger = entry;
-  _currentCashfreeLinkData = null;
+  _currentEasebuzzLedger = entry;
+  _currentEasebuzzLinkData = null;
 
   var contactVal = entry.contactNumber || '';
   document.getElementById('cf-student-info').innerHTML =
@@ -12930,29 +13086,29 @@ function openCashfreeLinkModal(ledgerId) {
   var genBtn = document.getElementById('cf-btn-generate');
   if (genBtn) {
     genBtn.disabled = false;
-    genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Cashfree Payment Link';
+    genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Easebuzz Payment Link';
   }
 
   openModal('modal-cashfree-link');
 }
 
-function openCashfreeFromCollectModal() {
+function openEasebuzzFromCollectModal() {
   if (!_collectLedgerId) return;
   closeModal('modal-collect');
-  openCashfreeLinkModal(_collectLedgerId);
+  openEasebuzzLinkModal(_collectLedgerId);
 }
 
-function openCashfreeFromSFD(ledgerId) {
+function openEasebuzzFromSFD(ledgerId) {
   var entry = (_sfdEntries || []).find(function(e){ return e.ledgerId === ledgerId; });
   if (entry) {
     var exists = (allPendingFees || []).find(function(e){ return e.ledgerId === ledgerId; });
     if (!exists && allPendingFees) allPendingFees.push(entry);
   }
-  openCashfreeLinkModal(ledgerId);
+  openEasebuzzLinkModal(ledgerId);
 }
 
-function doGenerateCashfreeLink() {
-  if (!_currentCashfreeLedger) return;
+function doGenerateEasebuzzLink() {
+  if (!_currentEasebuzzLedger) return;
 
   var amt = parseFloat(document.getElementById('cf-amount').value) || 0;
   if (amt <= 0) {
@@ -12960,45 +13116,47 @@ function doGenerateCashfreeLink() {
     return;
   }
   var phone = (document.getElementById('cf-phone').value || '').trim();
-  var purpose = (document.getElementById('cf-purpose').value || '').trim() || ('Fee payment for ' + _currentCashfreeLedger.studentName);
+  var purpose = (document.getElementById('cf-purpose').value || '').trim() || ('Fee payment for ' + _currentEasebuzzLedger.studentName);
 
-  var cfg = getSavedCashfreeConfig();
+  var cfg = getSavedEasebuzzConfig();
   var genBtn = document.getElementById('cf-btn-generate');
   if (genBtn) {
     genBtn.disabled = true;
-    genBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Generating Link with Cashfree...';
+    genBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Generating Link with Easebuzz...';
   }
 
-  var uniqueLinkId = ('AMG_' + (_currentCashfreeLedger.ledgerId || 'FEE') + '_' + Date.now().toString().slice(-6)).replace(/[^a-zA-Z0-9_-]/g, '_');
+  var uniqueTxnId = ('AMG_' + (_currentEasebuzzLedger.ledgerId || 'FEE') + '_' + Date.now().toString().slice(-6)).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  fetch('/api/cashfree', {
+  fetch('/api/easebuzz', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'create_link',
       env: cfg.env || 'sandbox',
-      appId: cfg.appId || '',
-      secretKey: cfg.secretKey || '',
-      linkId: uniqueLinkId,
+      merchantKey: cfg.merchantKey || cfg.appId || '',
+      salt: cfg.salt || cfg.secretKey || '',
+      txnid: uniqueTxnId,
       amount: amt,
       purpose: purpose,
       customerPhone: phone,
-      customerName: _currentCashfreeLedger.studentName || 'Student',
-      customerEmail: 'student@amghostel.com'
+      customerName: _currentEasebuzzLedger.studentName || 'Student',
+      customerEmail: 'student@amghostel.com',
+      udf1: _currentEasebuzzLedger.ledgerId || ''
     })
   }).then(function(res){ return res.json(); }).then(function(data){
     if (genBtn) {
       genBtn.disabled = false;
-      genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Cashfree Payment Link';
+      genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Easebuzz Payment Link';
     }
 
     if (data.success && data.linkUrl) {
-      _currentCashfreeLinkData = {
-        linkId: data.linkId || uniqueLinkId,
+      _currentEasebuzzLinkData = {
+        linkId: data.linkId || uniqueTxnId,
+        txnid: data.txnid || uniqueTxnId,
         linkUrl: data.linkUrl,
         amount: amt,
-        ledgerId: _currentCashfreeLedger.ledgerId,
-        studentName: _currentCashfreeLedger.studentName,
+        ledgerId: _currentEasebuzzLedger.ledgerId,
+        studentName: _currentEasebuzzLedger.studentName,
         phone: phone,
         purpose: purpose
       };
@@ -13018,20 +13176,20 @@ function doGenerateCashfreeLink() {
       }
 
       document.getElementById('cf-result-wrap').classList.remove('hidden');
-      showToast('Cashfree payment link generated successfully!', 'success');
+      showToast('Easebuzz payment link generated successfully!', 'success');
     } else {
-      showToast('Error: ' + (data.message || 'Failed to create payment link. Please check Payment Gateway Settings.'), 'error');
+      showToast('Error: ' + (data.message || 'Failed to create Easebuzz payment link. Please check Payment Gateway Settings.'), 'error');
     }
   }).catch(function(err){
     if (genBtn) {
       genBtn.disabled = false;
-      genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Cashfree Payment Link';
+      genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Easebuzz Payment Link';
     }
-    showToast('Network error while contacting Cashfree: ' + err.message, 'error');
+    showToast('Network error while contacting Easebuzz: ' + err.message, 'error');
   });
 }
 
-function copyCashfreeUrl() {
+function copyEasebuzzUrl() {
   var urlInput = document.getElementById('cf-generated-url');
   if (!urlInput || !urlInput.value) return;
   urlInput.select();
@@ -13049,24 +13207,24 @@ function copyCashfreeUrl() {
   }
 }
 
-function openCashfreeDirectUrl() {
-  if (!_currentCashfreeLinkData || !_currentCashfreeLinkData.linkUrl) return;
-  window.open(_currentCashfreeLinkData.linkUrl, '_blank');
+function openEasebuzzDirectUrl() {
+  if (!_currentEasebuzzLinkData || !_currentEasebuzzLinkData.linkUrl) return;
+  window.open(_currentEasebuzzLinkData.linkUrl, '_blank');
 }
 
-function sendCashfreeOnWhatsApp() {
-  if (!_currentCashfreeLinkData || !_currentCashfreeLinkData.linkUrl) {
+function sendEasebuzzOnWhatsApp() {
+  if (!_currentEasebuzzLinkData || !_currentEasebuzzLinkData.linkUrl) {
     showToast('Please generate the payment link first.', 'warning');
     return;
   }
 
-  var rawPhone = (_currentCashfreeLinkData.phone || document.getElementById('cf-phone').value || '').replace(/\D/g, '');
+  var rawPhone = (_currentEasebuzzLinkData.phone || document.getElementById('cf-phone').value || '').replace(/\D/g, '');
   if (rawPhone.length > 10) rawPhone = rawPhone.slice(-10);
   var intlPhone = rawPhone ? ('91' + rawPhone) : '';
 
-  var studentName = _currentCashfreeLinkData.studentName || 'Student';
-  var amount = _currentCashfreeLinkData.amount || 0;
-  var purpose = _currentCashfreeLinkData.purpose || 'Hostel Fee';
+  var studentName = _currentEasebuzzLinkData.studentName || 'Student';
+  var amount = _currentEasebuzzLinkData.amount || 0;
+  var purpose = _currentEasebuzzLinkData.purpose || 'Hostel Fee';
   var hostelName = (hostelSettings && hostelSettings.HOSTEL_NAME) ? hostelSettings.HOSTEL_NAME : "AMG Girls' Hostel";
 
   var message = "Namaste / Dear Parent & Student (" + studentName + "),\n\n"
@@ -13075,8 +13233,8 @@ function sendCashfreeOnWhatsApp() {
     + "• *Student Name:* " + studentName + "\n"
     + "• *Purpose:* " + purpose + "\n"
     + "• *Amount Payable:* ₹" + Number(amount).toLocaleString('en-IN') + "\n\n"
-    + "💳 *Online Payment Link (UPI / GPay / PhonePe / Card / NetBanking):*\n"
-    + _currentCashfreeLinkData.linkUrl + "\n\n"
+    + "💳 *Online Payment Link (UPI / GPay / PhonePe / Card / NetBanking via Easebuzz):*\n"
+    + _currentEasebuzzLinkData.linkUrl + "\n\n"
     + "Kindly complete the payment through the link above. Once paid, your official fee receipt will be recorded automatically.\n\n"
     + "Warm Regards,\n"
     + "*" + hostelName + " Administration*";
@@ -13088,28 +13246,31 @@ function sendCashfreeOnWhatsApp() {
   window.open(waUrl, '_blank');
 }
 
-function doCheckCashfreeStatus() {
-  if (!_currentCashfreeLinkData || !_currentCashfreeLinkData.linkId) {
+function doCheckEasebuzzStatus() {
+  if (!_currentEasebuzzLinkData || (!_currentEasebuzzLinkData.linkId && !_currentEasebuzzLinkData.txnid)) {
     showToast('No active payment link to check.', 'warning');
     return;
   }
 
-  var cfg = getSavedCashfreeConfig();
+  var cfg = getSavedEasebuzzConfig();
   var checkBtn = document.getElementById('cf-btn-check-status');
   if (checkBtn) {
     checkBtn.disabled = true;
-    checkBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Checking status on Cashfree...';
+    checkBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Checking status on Easebuzz...';
   }
 
-  fetch('/api/cashfree', {
+  var activeTxnId = _currentEasebuzzLinkData.txnid || _currentEasebuzzLinkData.linkId;
+
+  fetch('/api/easebuzz', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'check_status',
       env: cfg.env || 'sandbox',
-      appId: cfg.appId || '',
-      secretKey: cfg.secretKey || '',
-      linkId: _currentCashfreeLinkData.linkId
+      merchantKey: cfg.merchantKey || cfg.appId || '',
+      salt: cfg.salt || cfg.secretKey || '',
+      txnid: activeTxnId,
+      linkId: activeTxnId
     })
   }).then(function(res){ return res.json(); }).then(function(data){
     if (checkBtn) {
@@ -13118,16 +13279,16 @@ function doCheckCashfreeStatus() {
     }
 
     if (data.success) {
-      if (data.isPaid || data.linkStatus === 'PAID') {
+      if (data.isPaid || data.linkStatus === 'PAID' || data.linkStatus === 'SUCCESS') {
         document.getElementById('cf-status-badge').textContent = '✔ Payment Verified (PAID)';
         document.getElementById('cf-status-badge').style.background = '#D1FAE5';
         document.getElementById('cf-status-badge').style.color = '#065F46';
 
-        showToast('Payment verified successfully on Cashfree! Recording receipt in Supabase...', 'success');
+        showToast('Payment verified successfully on Easebuzz! Recording receipt in database...', 'success');
 
-        var txnId = data.orderId || ('CF_' + _currentCashfreeLinkData.linkId);
-        var paidAmt = parseFloat(data.amountPaid) || _currentCashfreeLinkData.amount;
-        var remarks = 'Paid online via Cashfree Payment Link (' + _currentCashfreeLinkData.linkId + ')';
+        var txnId = data.easepayid || data.orderId || ('EB_' + activeTxnId);
+        var paidAmt = parseFloat(data.amountPaid) || _currentEasebuzzLinkData.amount;
+        var remarks = 'Paid online via Easebuzz Payment Link (' + activeTxnId + ')';
 
         google.script.run.withSuccessHandler(function(res){
           if (res.success) {
@@ -13145,17 +13306,17 @@ function doCheckCashfreeStatus() {
         }).withFailureHandler(function(err){
           showToast('Database error: ' + err.message, 'error');
         }).recordFeePayment(
-          _currentCashfreeLinkData.ledgerId,
+          _currentEasebuzzLinkData.ledgerId,
           paidAmt,
-          'Online (Cashfree)',
+          'Online (Easebuzz)',
           txnId,
-          (currentUser && currentUser.name) ? currentUser.name : 'Cashfree System',
+          (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
           remarks
         );
 
       } else {
         document.getElementById('cf-status-badge').textContent = 'Status: ' + (data.linkStatus || 'PENDING');
-        showToast('Payment status is still ' + (data.linkStatus || 'ACTIVE') + '. Please ask the parent to complete payment.', 'warning');
+        showToast('Payment status is ' + (data.linkStatus || 'PENDING') + '. Please ask the parent to complete payment.', 'warning');
       }
     } else {
       showToast('Failed to check status: ' + (data.message || 'Unknown error'), 'error');
@@ -13168,6 +13329,25 @@ function doCheckCashfreeStatus() {
     showToast('Error checking payment status: ' + err.message, 'error');
   });
 }
+
+// ── BACKWARD COMPATIBILITY ALIASES ──
+var _currentCashfreeLedger = _currentEasebuzzLedger;
+var _currentCashfreeLinkData = _currentEasebuzzLinkData;
+var getSavedCashfreeConfig = getSavedEasebuzzConfig;
+var updateCashfreeEnvBadge = updateEasebuzzEnvBadge;
+var toggleCashfreeSecretVisibility = toggleEasebuzzSecretVisibility;
+var loadCashfreeSettings = loadEasebuzzSettings;
+var saveCashfreeSettings = saveEasebuzzSettings;
+var testCashfreeConnection = testEasebuzzConnection;
+var openCashfreeLinkModal = openEasebuzzLinkModal;
+var openCashfreeFromCollectModal = openEasebuzzFromCollectModal;
+var openCashfreeFromSFD = openEasebuzzFromSFD;
+var doGenerateCashfreeLink = doGenerateEasebuzzLink;
+var copyCashfreeUrl = copyEasebuzzUrl;
+var openCashfreeDirectUrl = openEasebuzzDirectUrl;
+var sendCashfreeOnWhatsApp = sendEasebuzzOnWhatsApp;
+var doCheckCashfreeStatus = doCheckEasebuzzStatus;
+
 
 var _collectMultiplePayments = null;
 var _openedFromSfd = false;
@@ -13543,6 +13723,8 @@ function renderFeeReceipts(){
       }
       actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+escapeJs(rId)+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button>'
         + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+escapeJs(rId)+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
+    } else {
+      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+escapeJs(rId)+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
     actions += '</div>';
 
@@ -15149,7 +15331,7 @@ function loadSettingsPage(){
   document.getElementById('setting-org-email').value = hostelSettings.HOSTEL_EMAIL || "";
   document.getElementById('setting-org-reg').value = hostelSettings.HOSTEL_REG_NO || "";
   previewSettingLogo();
-  loadCashfreeSettings();
+  loadEasebuzzSettings();
   
   var badge = document.getElementById('setting-active-ay-badge');
   if (badge) badge.textContent = activeAcademicYear;
@@ -19039,6 +19221,7 @@ window.showToast = showToast;
 if (typeof openBankReconModal !== 'undefined') window.openBankReconModal = openBankReconModal;
 if (typeof openEditReceipt !== 'undefined') window.openEditReceipt = openEditReceipt;
 if (typeof doCancelReceipt !== 'undefined') window.doCancelReceipt = doCancelReceipt;
+if (typeof doRestoreReceipt !== 'undefined') window.doRestoreReceipt = doRestoreReceipt;
 if (typeof onAllCollegesToggle !== 'undefined') window.onAllCollegesToggle = onAllCollegesToggle;
 if (typeof onSpecificCollegeToggle !== 'undefined') window.onSpecificCollegeToggle = onSpecificCollegeToggle;
 if (typeof toggleAllCollegesCheckbox !== 'undefined') window.toggleAllCollegesCheckbox = toggleAllCollegesCheckbox;
@@ -19064,6 +19247,18 @@ if (typeof openComplianceModal !== 'undefined') window.openComplianceModal = ope
 if (typeof printServiceReport !== 'undefined') window.printServiceReport = printServiceReport;
 if (typeof printStudentLedger !== 'undefined') window.printStudentLedger = printStudentLedger;
 if (typeof printStudentAdmissionForm !== 'undefined') window.printStudentAdmissionForm = printStudentAdmissionForm;
+if (typeof openEasebuzzLinkModal !== 'undefined') window.openEasebuzzLinkModal = openEasebuzzLinkModal;
+if (typeof openEasebuzzFromCollectModal !== 'undefined') window.openEasebuzzFromCollectModal = openEasebuzzFromCollectModal;
+if (typeof openEasebuzzFromSFD !== 'undefined') window.openEasebuzzFromSFD = openEasebuzzFromSFD;
+if (typeof doGenerateEasebuzzLink !== 'undefined') window.doGenerateEasebuzzLink = doGenerateEasebuzzLink;
+if (typeof copyEasebuzzUrl !== 'undefined') window.copyEasebuzzUrl = copyEasebuzzUrl;
+if (typeof sendEasebuzzOnWhatsApp !== 'undefined') window.sendEasebuzzOnWhatsApp = sendEasebuzzOnWhatsApp;
+if (typeof openEasebuzzDirectUrl !== 'undefined') window.openEasebuzzDirectUrl = openEasebuzzDirectUrl;
+if (typeof doCheckEasebuzzStatus !== 'undefined') window.doCheckEasebuzzStatus = doCheckEasebuzzStatus;
+if (typeof saveEasebuzzSettings !== 'undefined') window.saveEasebuzzSettings = saveEasebuzzSettings;
+if (typeof testEasebuzzConnection !== 'undefined') window.testEasebuzzConnection = testEasebuzzConnection;
+if (typeof updateEasebuzzEnvBadge !== 'undefined') window.updateEasebuzzEnvBadge = updateEasebuzzEnvBadge;
+if (typeof toggleEasebuzzSecretVisibility !== 'undefined') window.toggleEasebuzzSecretVisibility = toggleEasebuzzSecretVisibility;
 if (typeof openCashfreeLinkModal !== 'undefined') window.openCashfreeLinkModal = openCashfreeLinkModal;
 if (typeof openCashfreeFromCollectModal !== 'undefined') window.openCashfreeFromCollectModal = openCashfreeFromCollectModal;
 if (typeof openCashfreeFromSFD !== 'undefined') window.openCashfreeFromSFD = openCashfreeFromSFD;
