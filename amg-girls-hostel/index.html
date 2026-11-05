@@ -7418,10 +7418,12 @@ window.google = {
                 return sCb({ success: false, message: 'Fee structure "' + (matchedStruct.structure_name || matchedStruct.structureName) + '" has no fee heads.' });
               }
 
-              // Preserve non-standard ledger entries (e.g. Linen charges, fine)
-              var standardKeywords = ['security', 'deposit', 'accom', 'rent', 'mess'];
+              // Preserve non-standard ledger entries (e.g. fine, damage charges)
+              var standardKeywords = ['security', 'deposit', 'accom', 'rent', 'mess', 'linen', 'brochure', 'application form'];
+              var structHeadNames = structHeads.map(function(h) { return (h.head_name || '').toLowerCase().trim(); });
               var customLedgerRows = currentLedger.filter(function(l) {
-                var hLower = (l.head_name || '').toLowerCase();
+                var hLower = (l.head_name || '').toLowerCase().trim();
+                if (structHeadNames.indexOf(hLower) !== -1) return false;
                 return !standardKeywords.some(function(k) { return hLower.indexOf(k) !== -1; });
               });
 
@@ -7511,7 +7513,7 @@ window.google = {
                   var hName = (row.head_name || '').toLowerCase();
                   var hMonth = (row.applicable_month || '').toLowerCase();
 
-                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) || (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1));
+                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) || (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1) || ((fType.indexOf('brochure') !== -1 || fType.indexOf('application form') !== -1) && (hName.indexOf('brochure') !== -1 || hName.indexOf('application form') !== -1)));
                   var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
 
                   if (headMatch && monthMatch) {

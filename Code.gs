@@ -3152,6 +3152,249 @@ function generateMissingAllotmentFees() {
   }
 }
 
+// Apply newly added fee heads (missing from existing student ledgers) to all active students
+// Safe: only adds heads that are in FEE_STRUCTURE_HEADS but NOT yet in STUDENT_FEE_LEDGER for that student
+function applyMissingFeeHeadsToStudents() {
+  try {
+    var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    var acadYear = getActiveAcademicYear();
+
+    // 1. Load all fee structures (active)
+    var structRes = getFeeStructures();
+    if (!structRes.success) return { success: false, message: "Could not load fee structures: " + structRes.message };
+    var activeStructures = (structRes.data || []).filter(function(s){ return s.status === "Active"; });
+    if (!activeStructures.length) return { success: false, message: "No active fee structures found." };
+
+    // 2. Load ALL fee heads for all active structures
+    // Map: structureId -> [head, head, ...]
+    var structHeadMap = {};
+    for (var si = 0; si < activeStructures.length; si++) {
+      var sid = activeStructures[si].structureId;
+      var headRes = getFeeHeadsRaw(sid);
+      if (headRes.success && headRes.data.length > 0) {
+        structHeadMap[sid] = headRes.data;
+      }
+    }
+
+    // 3. Load ROOM_ALLOTMENTS to get active students with structureId, allotmentDate
+    var allotSheet = getSheet("ROOM_ALLOTMENTS");
+    var allotData = allotSheet.getDataRange().getValues();
+    // Build map: appId -> { studentName, roomNumber, roomType, allotmentDate }
+    var studentAllotMap = {};
+    for (var ai = 1; ai < allotData.length; ai++) {
+      var ar = allotData[ai];
+      if (!ar[0] || ar[0].toString().trim().toUpperCase() === "ALLOTMENT_ID") continue;
+      var aStatus = (ar[9] || "").toString().trim();
+      if (aStatus !== "Active") continue;
+      var aAppId = (ar[1] || "").toString().trim();
+      if (!aAppId) continue;
+      studentAllotMap[aAppId] = {
+        studentName:   (ar[2] || "").toString().trim(),
+        roomNumber:    (ar[4] || "").toString().trim(),
+        roomType:      (ar[5] || "").toString().trim(),
+        allotmentDate: ar[6] ? ar[6].toString().trim() : ""
+      };
+    }
+
+    // 4. Load existing STUDENT_FEE_LEDGER
+    var ledgerSheet = getSheet("STUDENT_FEE_LEDGER");
+    var ledgerData = ledgerSheet.getDataRange().getValues();
+
+    // Map: appId -> Set of headIds already present (non-cancelled)
+    var studentHeadSet = {};
+    // Also map: appId -> structureId (from existing ledger rows)
+    var studentStructMap = {};
+    for (var li = 1; li < ledgerData.length; li++) {
+      var lr = ledgerData[li];
+      if (!lr[0] || lr[0].toString().trim().toUpperCase() === "LEDGER_ID") continue;
+      var lAppId    = (lr[1] || "").toString().trim();
+      var lHeadId   = (lr[5] || "").toString().trim();
+      var lStructId = (lr[4] || "").toString().trim();
+      var lStatus   = (lr[12] || "").toString().trim().toLowerCase();
+      if (!lAppId) continue;
+      if (!studentHeadSet[lAppId]) studentHeadSet[lAppId] = {};
+      if (lStatus !== "cancelled" && lHeadId) {
+        studentHeadSet[lAppId][lHeadId] = true;
+      }
+      if (lStatus !== "cancelled" && lStructId && lStructId !== "CUSTOM") {
+        studentStructMap[lAppId] = lStructId;
+      }
+    }
+
+    // 5. For each active allotted student, find their structure and check for missing heads
+    var newRows = [];
+    var studentReport = [];
+
+    var appIds = Object.keys(studentAllotMap);
+    for (var idx = 0; idx < appIds.length; idx++) {
+      var appId = appIds[idx];
+      var info = studentAllotMap[appId];
+
+      // Determine structure for this student
+      var structId = studentStructMap[appId];
+      if (!structId) {
+        // Try to find from active structures by roomType
+        var matchedStruct = findMatchingFeeStructure(info.roomType, activeStructures);
+        if (matchedStruct) structId = matchedStruct.structureId;
+      }
+      if (!structId) {
+        studentReport.push({ appId: appId, name: info.studentName, status: "SKIPPED", reason: "No matching fee structure for roomType: " + info.roomType });
+        continue;
+      }
+
+      var heads = structHeadMap[structId];
+      if (!heads || !heads.length) {
+        studentReport.push({ appId: appId, name: info.studentName, status: "SKIPPED", reason: "No fee heads in structure " + structId });
+        continue;
+      }
+
+      var existingHeads = studentHeadSet[appId] || {};
+      var missingHeads = heads.filter(function(h) { return !existingHeads[h.headId]; });
+
+      if (!missingHeads.length) {
+        studentReport.push({ appId: appId, name: info.studentName, status: "UP_TO_DATE", added: 0 });
+        continue;
+      }
+
+      // Determine allotment date for due date calculation
+      var startDate = info.allotmentDate ? new Date(info.allotmentDate) : new Date();
+      if (isNaN(startDate.getTime())) startDate = new Date();
+      var startMonth = startDate.getMonth();
+      var startYear  = startDate.getFullYear();
+
+      var addedCount = 0;
+      missingHeads.forEach(function(head) {
+        if (head.frequency === "One-time") {
+          var dueDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), "dd-MMM-yyyy");
+          newRows.push([
+            generateId("LDG"),
+            appId,
+            info.studentName,
+            info.roomNumber,
+            structId,
+            head.headId,
+            head.headName,
+            "On Joining",
+            head.amount,
+            0,
+            head.amount,
+            dueDate,
+            "Pending",
+            todayFormatted(),
+            acadYear
+          ]);
+          addedCount++;
+        } else if (head.frequency === "Monthly") {
+          for (var m = 0; m < 12; m++) {
+            var monthIdx = (startMonth + m) % 12;
+            var year = startYear + Math.floor((startMonth + m) / 12);
+            var monthLabel = monthNames[monthIdx] + " " + year;
+            var dueDay = Math.min(head.dueDay || 5, 28);
+            var dueDateObj = new Date(year, monthIdx, dueDay);
+            var dueDateStr = Utilities.formatDate(dueDateObj, Session.getScriptTimeZone(), "dd-MMM-yyyy");
+            newRows.push([
+              generateId("LDG"),
+              appId,
+              info.studentName,
+              info.roomNumber,
+              structId,
+              head.headId,
+              head.headName,
+              monthLabel,
+              head.amount,
+              0,
+              head.amount,
+              dueDateStr,
+              "Pending",
+              todayFormatted(),
+              acadYear
+            ]);
+            addedCount++;
+          }
+        } else if (head.frequency === "Bi-annually") {
+          var dueDate1 = Utilities.formatDate(startDate, Session.getScriptTimeZone(), "dd-MMM-yyyy");
+          newRows.push([
+            generateId("LDG"), appId, info.studentName, info.roomNumber,
+            structId, head.headId, head.headName, "Semester 1",
+            head.amount, 0, head.amount, dueDate1, "Pending", todayFormatted(), acadYear
+          ]);
+          var sem2Month = (startMonth + 5) % 12;
+          var sem2Year  = startYear + Math.floor((startMonth + 5) / 12);
+          var sem2Label = "Semester 2 (" + monthNames[sem2Month] + " " + sem2Year + ")";
+          var dueDay2   = Math.min(head.dueDay || 5, 28);
+          var dueDate2Obj = new Date(sem2Year, sem2Month, dueDay2);
+          var dueDate2Str = Utilities.formatDate(dueDate2Obj, Session.getScriptTimeZone(), "dd-MMM-yyyy");
+          newRows.push([
+            generateId("LDG"), appId, info.studentName, info.roomNumber,
+            structId, head.headId, head.headName, sem2Label,
+            head.amount, 0, head.amount, dueDate2Str, "Pending", todayFormatted(), acadYear
+          ]);
+          addedCount += 2;
+        }
+      });
+
+      studentReport.push({ appId: appId, name: info.studentName, status: "UPDATED", added: addedCount, missingHeadNames: missingHeads.map(function(h){ return h.headName; }) });
+    }
+
+    // 6. Write all new rows to ledger at once
+    if (newRows.length > 0) {
+      if (ledgerSheet.getMaxColumns() < 15) {
+        ledgerSheet.insertColumnsAfter(ledgerSheet.getMaxColumns(), 15 - ledgerSheet.getMaxColumns());
+      }
+      var startRow = ledgerSheet.getLastRow() + 1;
+      ledgerSheet.getRange(startRow, 1, newRows.length, 15).setValues(newRows);
+    }
+
+    // 7. Reconcile receipts
+    try { reconcileAllFeeReceipts(); } catch (eRec) { Logger.log("Auto-reconcile error: " + eRec.message); }
+
+    var updatedStudents = studentReport.filter(function(r){ return r.status === "UPDATED"; });
+    var skippedStudents = studentReport.filter(function(r){ return r.status === "SKIPPED"; });
+    var upToDateStudents = studentReport.filter(function(r){ return r.status === "UP_TO_DATE"; });
+
+    return {
+      success: true,
+      totalRowsAdded: newRows.length,
+      updatedStudents: updatedStudents,
+      skippedStudents: skippedStudents,
+      upToDateCount: upToDateStudents.length,
+      message: "Applied missing fee heads to " + updatedStudents.length + " student(s). " +
+               newRows.length + " new ledger entries added. " +
+               upToDateStudents.length + " student(s) already up to date."
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// Helper: get fee heads for a structure WITHOUT the isAllocated check (raw from sheet only)
+function getFeeHeadsRaw(structureId) {
+  try {
+    var sheet = getSheet("FEE_STRUCTURE_HEADS");
+    var data = sheet.getDataRange().getValues();
+    var results = [];
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      if (!row[0]) continue;
+      if (row[0].toString().trim().toUpperCase() === "HEAD_ID") continue;
+      var rowStructId = (row[1] || "").toString().trim();
+      if (structureId && rowStructId !== structureId.toString().trim()) continue;
+      results.push({
+        headId:    row[0].toString().trim(),
+        structureId: rowStructId,
+        headName:  (row[2] || "").toString().trim(),
+        amount:    parseFloat(row[3]) || 0,
+        frequency: (row[4] || "").toString().trim(),
+        dueDay:    parseInt(row[5]) || 1,
+        priority:  parseInt(row[6]) || 99
+      });
+    }
+    return { success: true, data: results };
+  } catch (err) {
+    return { success: false, message: err.message, data: [] };
+  }
+}
+
 // Single student fee demand generation (e.g. from modal or table)
 function generateStudentFeeDemand(appId, studentName, roomNumber, roomType, allotDate) {
   var res = applyFeeStructureOnAllotment(appId, studentName, roomNumber, roomType, allotDate, true);
