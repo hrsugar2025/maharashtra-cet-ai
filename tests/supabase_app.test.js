@@ -1619,16 +1619,22 @@ test('26. Fee Collection Report - Strict 4 Fee Types & Accurate Allocation Engin
 test('27. Easebuzz Payment Gateway Hash Generation & Payload Verification', async () => {
   const crypto = require('crypto');
 
-  const testKey = '2PFP7XRXXX';
-  const testSalt = 'DAH8HG7XXX';
-  const txnid = 'AMG_FEE_1001_123456';
-  const amount = '5000.00';
-  const productinfo = 'AMG Hostel Fee';
-  const firstname = 'Aishwarya Mane';
-  const email = 'student@amghostel.com';
+  const testKey = 'FRHPPBX6RF';
+  const testSalt = '45UDY802LV';
+  const txnid = 'TXN_1731400000000_STD1001';
+  const amount = '50000.00';
+  const productinfo = 'Hostel Fee 2026';
+  const firstname = 'Aishwarya';
+  const email = 'mvmghostel@gmail.com';
   const phone = '9876543210';
+  const udf1 = 'APP-2026-1001';
+  const udf2 = 'LDG-1001';
+  const udf3 = '2026-27';
+  const udf4 = '';
+  const udf5 = '';
 
-  // 1. Initiate Link Hash calculation strictly matching Easebuzz sequence
+  // 1. Strict 16-pipe Initiate Link Hash calculation:
+  // key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt
   const hashSequence = [
     testKey,
     txnid,
@@ -1636,25 +1642,45 @@ test('27. Easebuzz Payment Gateway Hash Generation & Payload Verification', asyn
     productinfo,
     firstname,
     email,
-    '', '', '', '', '', '', '', '', '', '',
+    udf1, udf2, udf3, udf4, udf5, '', '', '', '', '',
     testSalt
   ].join('|');
 
-  const initiateHash = crypto.createHash('sha512').update(hashSequence).digest('hex');
+  const initiateHash = crypto.createHash('sha512').update(hashSequence).digest('hex').toLowerCase();
   assert.ok(initiateHash);
   assert.equal(typeof initiateHash, 'string');
   assert.equal(initiateHash.length, 128); // SHA-512 hex is 128 chars
 
-  // 2. Retrieve Status Hash calculation
-  const retrieveSequence = `${testKey}|${txnid}|${testSalt}`;
-  const retrieveHash = crypto.createHash('sha512').update(retrieveSequence).digest('hex');
-  assert.ok(retrieveHash);
-  assert.equal(retrieveHash.length, 128);
+  // 2. Strict Reverse Hash calculation for Callback / Webhook:
+  // salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
+  const status = 'success';
+  const reverseSequence = [
+    testSalt,
+    status,
+    '', '', '', '', '', '',
+    udf5,
+    udf4,
+    udf3,
+    udf2,
+    udf1,
+    email,
+    firstname,
+    productinfo,
+    amount,
+    txnid,
+    testKey
+  ].join('|');
+
+  const reverseHash = crypto.createHash('sha512').update(reverseSequence).digest('hex').toLowerCase();
+  assert.ok(reverseHash);
+  assert.equal(reverseHash.length, 128);
 
   // 3. Hosted checkout URL verification
   const sampleAccessKey = 'ebz_acc_7890abcdef123456';
-  const paymentUrl = `https://testpay.easebuzz.in/pay/${sampleAccessKey}`;
-  assert.equal(paymentUrl, 'https://testpay.easebuzz.in/pay/ebz_acc_7890abcdef123456');
+  const paymentUrlProd = `https://pay.easebuzz.in/pay/${sampleAccessKey}`;
+  const paymentUrlSandbox = `https://testpay.easebuzz.in/pay/${sampleAccessKey}`;
+  assert.equal(paymentUrlProd, 'https://pay.easebuzz.in/pay/ebz_acc_7890abcdef123456');
+  assert.equal(paymentUrlSandbox, 'https://testpay.easebuzz.in/pay/ebz_acc_7890abcdef123456');
 
   // 4. Verification of successful payment response parsing
   const mockEasebuzzResponse = {
@@ -1663,8 +1689,8 @@ test('27. Easebuzz Payment Gateway Hash Generation & Payload Verification', asyn
       status: 'success',
       easepayid: 'E2212042X8XXXX',
       txnid: txnid,
-      amount: '5000.00',
-      net_amount_debit: '5000.00',
+      amount: '50000.00',
+      net_amount_debit: '50000.00',
       mode: 'UPI'
     }
   };
@@ -1677,6 +1703,32 @@ test('27. Easebuzz Payment Gateway Hash Generation & Payload Verification', asyn
   assert.equal(recordedMode, 'Online (Easebuzz)');
   assert.ok(remarks.includes('Easebuzz'));
 });
+
+test('28. Easebuzz Test Endpoint Dummy ₹1.00 Verification Hash', async () => {
+  const crypto = require('crypto');
+  const testKey = 'FRHPPBX6RF';
+  const testSalt = '45UDY802LV';
+  const testTxnId = 'TEST_1731400000000';
+  const testAmount = '1.00';
+  const testProduct = 'Test Connection';
+  const testName = 'Test User';
+  const testEmail = 'mvmghostel@gmail.com';
+
+  const hashSeq = [
+    testKey,
+    testTxnId,
+    testAmount,
+    testProduct,
+    testName,
+    testEmail,
+    '', '', '', '', '', '', '', '', '', '',
+    testSalt
+  ].join('|');
+
+  const hash = crypto.createHash('sha512').update(hashSeq).digest('hex').toLowerCase();
+  assert.equal(hash.length, 128);
+});
+
 
 
 

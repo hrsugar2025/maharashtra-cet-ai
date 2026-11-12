@@ -2851,10 +2851,10 @@ if (typeof window.google.script.run === 'undefined') {
                 <span class="material-icons-round" style="color: #4F46E5;">payments</span>
                 Easebuzz Payment Gateway &amp; WhatsApp Integration
               </div>
-              <div class="card-sub" style="color: #4338CA;">Configure Easebuzz API credentials (Merchant Key &amp; Salt) to generate instant online payment links and QR codes for parents &amp; students</div>
+              <div class="card-sub" style="color: #4338CA;">Configure Easebuzz API credentials to generate instant online payment links and QR codes for parents &amp; students</div>
             </div>
-            <span id="cashfree-env-badge" style="background: #4F46E5; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
-              <span style="width: 6px; height: 6px; border-radius: 50%; background: #A5B4FC;"></span> Sandbox (Test)
+            <span id="cashfree-env-badge" style="background: #10B981; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: #FFFFFF;"></span> Production (Live)
             </span>
           </div>
           <div style="padding: 12px 0;">
@@ -2862,19 +2862,19 @@ if (typeof window.google.script.run === 'undefined') {
               <div class="form-group">
                 <label class="form-label" style="color:#3730A3;">Gateway Environment *</label>
                 <select id="cfg-cashfree-env" class="form-select" onchange="updateCashfreeEnvBadge(this.value)">
-                  <option value="sandbox" selected>Sandbox (Test Mode)</option>
-                  <option value="production">Production (Live Payments)</option>
+                  <option value="production" selected>Production (Live Payments)</option>
+                  <option value="sandbox">Sandbox (Test Mode)</option>
                 </select>
               </div>
               <div class="form-group">
                 <label class="form-label" style="color:#3730A3;">Easebuzz Merchant Key *</label>
-                <input type="text" id="cfg-cashfree-appid" class="form-input" placeholder="e.g. 2PFP7XRXXX / Live Key" />
+                <input type="text" id="cfg-cashfree-appid" class="form-input" placeholder="FRHPPBX6RF" value="FRHPPBX6RF" />
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label" style="color:#3730A3;">Easebuzz Salt Key *</label>
+              <label class="form-label" style="color:#3730A3;">Easebuzz Merchant Salt *</label>
               <div style="position:relative;">
-                <input type="password" id="cfg-cashfree-secret" class="form-input" placeholder="Enter Easebuzz Salt Key" style="padding-right:40px;" />
+                <input type="password" id="cfg-cashfree-secret" class="form-input" placeholder="45UDY802LV" value="45UDY802LV" style="padding-right:40px;" />
                 <button type="button" class="btn btn-ghost btn-sm" onclick="toggleCashfreeSecretVisibility()" style="position:absolute;right:4px;top:4px;bottom:4px;padding:0 8px;border:none;" title="Show/Hide Key">
                   <span class="material-icons-round" id="cfg-cashfree-secret-icon" style="font-size:18px;">visibility</span>
                 </button>
@@ -12930,18 +12930,19 @@ function getSavedEasebuzzConfig() {
     if (raw) return JSON.parse(raw);
   } catch(e){}
   return {
-    env: 'sandbox',
-    merchantKey: '',
-    salt: '',
-    appId: '',
-    secretKey: ''
+    env: 'production',
+    merchantKey: 'FRHPPBX6RF',
+    salt: '45UDY802LV',
+    appId: 'FRHPPBX6RF',
+    secretKey: '45UDY802LV'
   };
 }
 
 function updateEasebuzzEnvBadge(env) {
   var badge = document.getElementById('cashfree-env-badge') || document.getElementById('easebuzz-env-badge');
   if (!badge) return;
-  if (env === 'production') {
+  var isProd = (env === 'production' || env === 'live' || env === 'prod');
+  if (isProd) {
     badge.style.background = '#10B981';
     badge.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: #FFFFFF;"></span> Production (Live)';
   } else {
@@ -12951,7 +12952,7 @@ function updateEasebuzzEnvBadge(env) {
 }
 
 function toggleEasebuzzSecretVisibility() {
-  var inp = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-secret');
+  var inp = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-secret') || document.getElementById('cfg-easebuzz-salt');
   var icon = document.getElementById('cfg-cashfree-secret-icon') || document.getElementById('cfg-easebuzz-secret-icon');
   if (!inp) return;
   if (inp.type === 'password') {
@@ -12968,11 +12969,47 @@ function loadEasebuzzSettings() {
   var envEl = document.getElementById('cfg-cashfree-env') || document.getElementById('cfg-easebuzz-env');
   var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
   var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
-  var activeEnv = cfg.env || 'sandbox';
+  var activeEnv = cfg.env || 'production';
   if (envEl) envEl.value = activeEnv;
-  if (appEl) appEl.value = cfg.merchantKey || cfg.appId || '';
-  if (secEl) secEl.value = cfg.salt || cfg.secretKey || '';
+  if (appEl) appEl.value = cfg.merchantKey || cfg.appId || 'FRHPPBX6RF';
+  if (secEl) secEl.value = cfg.salt || cfg.secretKey || '45UDY802LV';
   updateEasebuzzEnvBadge(activeEnv);
+
+  // If Supabase client is available, also fetch persisted gateway settings
+  if (typeof _supabase !== 'undefined' && _supabase) {
+    _supabase.from('hostel_settings').select('*').in('key', ['gateway_provider', 'environment', 'merchant_key', 'merchant_salt']).then(function(res) {
+      if (res && res.data && res.data.length > 0) {
+        var map = {};
+        res.data.forEach(function(r) { map[r.key] = r.value; });
+        if (map.environment && envEl) {
+          envEl.value = map.environment;
+          cfg.env = map.environment;
+          updateEasebuzzEnvBadge(map.environment);
+        }
+        if (map.merchant_key && appEl) {
+          appEl.value = map.merchant_key;
+          cfg.merchantKey = map.merchant_key;
+          cfg.appId = map.merchant_key;
+        }
+        if (map.merchant_salt && secEl) {
+          // If masked salt returned (e.g. *******02LV), preserve local real salt for API calls
+          if (map.merchant_salt.indexOf('*') === -1) {
+            secEl.value = map.merchant_salt;
+            cfg.salt = map.merchant_salt;
+            cfg.secretKey = map.merchant_salt;
+          } else {
+            // Masked presentation in UI
+            secEl.setAttribute('data-masked-salt', map.merchant_salt);
+            if (!cfg.salt || cfg.salt.indexOf('*') !== -1) {
+              secEl.value = map.merchant_salt;
+            }
+          }
+        }
+        localStorage.setItem('amg_easebuzz_config', JSON.stringify(cfg));
+        localStorage.setItem('amg_cashfree_config', JSON.stringify(cfg));
+      }
+    }).catch(function(e){ console.warn('Could not fetch remote gateway settings:', e); });
+  }
 }
 
 function saveEasebuzzSettings() {
@@ -12980,16 +13017,27 @@ function saveEasebuzzSettings() {
   var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
   var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
 
-  var env = (envEl ? envEl.value : 'sandbox').trim();
-  var merchantKey = (appEl ? appEl.value : '').trim();
-  var salt = (secEl ? secEl.value : '').trim();
+  var env = (envEl ? envEl.value : 'production').trim();
+  var merchantKey = (appEl ? appEl.value : '').trim() || 'FRHPPBX6RF';
+  var rawSalt = (secEl ? secEl.value : '').trim();
+  var salt = rawSalt || '45UDY802LV';
+
+  // If user didn't edit a masked salt, retrieve stored unmasked salt
+  if (salt.indexOf('*') !== -1) {
+    var storedCfg = getSavedEasebuzzConfig();
+    if (storedCfg.salt && storedCfg.salt.indexOf('*') === -1) {
+      salt = storedCfg.salt;
+    } else {
+      salt = '45UDY802LV';
+    }
+  }
 
   if (!merchantKey) {
     showToast('Please enter Easebuzz Merchant Key.', 'error');
     return;
   }
   if (!salt) {
-    showToast('Please enter Easebuzz Salt Key.', 'error');
+    showToast('Please enter Easebuzz Merchant Salt.', 'error');
     return;
   }
 
@@ -13004,7 +13052,31 @@ function saveEasebuzzSettings() {
   localStorage.setItem('amg_easebuzz_config', JSON.stringify(cfg));
   localStorage.setItem('amg_cashfree_config', JSON.stringify(cfg));
   updateEasebuzzEnvBadge(env);
-  showToast('Easebuzz settings saved successfully!', 'success');
+
+  // Mask salt when saving/fetching back (e.g. 45UDY802LV -> *******02LV)
+  var maskedSalt = salt.length > 4 ? ('*'.repeat(salt.length - 4) + salt.slice(-4)) : '********';
+
+  // Persist into Supabase hostel_settings table
+  if (typeof _supabase !== 'undefined' && _supabase) {
+    var rows = [
+      { key: 'gateway_provider', value: 'easebuzz' },
+      { key: 'environment', value: env },
+      { key: 'merchant_key', value: merchantKey },
+      { key: 'merchant_salt', value: maskedSalt }
+    ];
+    _supabase.from('hostel_settings').upsert(rows).then(function(res) {
+      if (res && res.error) {
+        console.warn('Supabase save error:', res.error);
+        showToast('Saved locally. Note: Supabase sync warning: ' + res.error.message, 'warning');
+      } else {
+        showToast('Easebuzz settings saved to Supabase & locally!', 'success');
+      }
+    }).catch(function(err){
+      showToast('Saved locally. Supabase connection: ' + err.message, 'warning');
+    });
+  } else {
+    showToast('Easebuzz settings saved successfully!', 'success');
+  }
 }
 
 function testEasebuzzConnection() {
@@ -13012,9 +13084,19 @@ function testEasebuzzConnection() {
   var appEl = document.getElementById('cfg-cashfree-appid') || document.getElementById('cfg-easebuzz-key');
   var secEl = document.getElementById('cfg-cashfree-secret') || document.getElementById('cfg-easebuzz-salt');
 
-  var env = (envEl ? envEl.value : 'sandbox').trim();
-  var merchantKey = (appEl ? appEl.value : '').trim();
-  var salt = (secEl ? secEl.value : '').trim();
+  var env = (envEl ? envEl.value : 'production').trim();
+  var merchantKey = (appEl ? appEl.value : '').trim() || 'FRHPPBX6RF';
+  var rawSalt = (secEl ? secEl.value : '').trim();
+  var salt = rawSalt || '45UDY802LV';
+
+  if (salt.indexOf('*') !== -1) {
+    var storedCfg = getSavedEasebuzzConfig();
+    if (storedCfg.salt && storedCfg.salt.indexOf('*') === -1) {
+      salt = storedCfg.salt;
+    } else {
+      salt = '45UDY802LV';
+    }
+  }
 
   if (!merchantKey || !salt) {
     showToast('Please enter both Merchant Key and Salt to test connection.', 'warning');
@@ -13024,14 +13106,13 @@ function testEasebuzzConnection() {
   var btn = document.getElementById('btn-test-cashfree') || document.getElementById('btn-test-easebuzz');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Testing...';
+    btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Validating with Easebuzz...';
   }
 
-  fetch('/api/easebuzz', {
+  fetch('/api/payments/easebuzz/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'test_connection',
       env: env,
       merchantKey: merchantKey,
       salt: salt
@@ -13042,9 +13123,9 @@ function testEasebuzzConnection() {
       btn.innerHTML = '<span class="material-icons-round" style="font-size: 18px;">check_circle</span> Test Connection';
     }
     if (data.success) {
-      showToast(data.message || 'Successfully connected to Easebuzz!', 'success');
+      showToast(data.message || 'Successfully connected to Easebuzz ' + env.toUpperCase() + ' gateway! Credentials verified.', 'success');
     } else {
-      showToast('Connection failed: ' + (data.message || 'Invalid credentials'), 'error');
+      showToast('Easebuzz Connection Failed: ' + (data.message || 'Invalid credentials or inactive account'), 'error');
     }
   }).catch(function(err){
     if (btn) {
@@ -13127,23 +13208,28 @@ function doGenerateEasebuzzLink() {
     genBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Generating Link with Easebuzz...';
   }
 
-  var uniqueTxnId = ('AMG_' + (_currentEasebuzzLedger.ledgerId || 'FEE') + '_' + Date.now().toString().slice(-6)).replace(/[^a-zA-Z0-9_-]/g, '_');
+  var studentId = _currentEasebuzzLedger.appId || _currentEasebuzzLedger.prn || 'STD';
+  var uniqueTxnId = ('TXN_' + Date.now() + '_' + studentId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  fetch('/api/easebuzz', {
+  fetch('/api/payments/easebuzz/initiate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'create_link',
-      env: cfg.env || 'sandbox',
-      merchantKey: cfg.merchantKey || cfg.appId || '',
-      salt: cfg.salt || cfg.secretKey || '',
+      env: cfg.env || 'production',
+      merchantKey: cfg.merchantKey || cfg.appId || 'FRHPPBX6RF',
+      salt: cfg.salt || cfg.secretKey || '45UDY802LV',
       txnid: uniqueTxnId,
+      studentId: studentId,
+      feeId: _currentEasebuzzLedger.ledgerId || '',
+      academicYear: _currentEasebuzzLedger.academicYear || activeAcademicYear || '2026-27',
       amount: amt,
-      purpose: purpose,
-      customerPhone: phone,
-      customerName: _currentEasebuzzLedger.studentName || 'Student',
-      customerEmail: 'student@amghostel.com',
-      udf1: _currentEasebuzzLedger.ledgerId || ''
+      productinfo: purpose,
+      firstname: _currentEasebuzzLedger.studentName || 'Student',
+      phone: phone,
+      email: 'mvmghostel@gmail.com',
+      udf1: studentId,
+      udf2: _currentEasebuzzLedger.ledgerId || '',
+      udf3: _currentEasebuzzLedger.academicYear || activeAcademicYear || '2026-27'
     })
   }).then(function(res){ return res.json(); }).then(function(data){
     if (genBtn) {
@@ -13151,11 +13237,12 @@ function doGenerateEasebuzzLink() {
       genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Easebuzz Payment Link';
     }
 
-    if (data.success && data.linkUrl) {
+    if (data.success && (data.linkUrl || data.paymentUrl)) {
+      var pUrl = data.linkUrl || data.paymentUrl;
       _currentEasebuzzLinkData = {
-        linkId: data.linkId || uniqueTxnId,
+        linkId: data.txnid || uniqueTxnId,
         txnid: data.txnid || uniqueTxnId,
-        linkUrl: data.linkUrl,
+        linkUrl: pUrl,
         amount: amt,
         ledgerId: _currentEasebuzzLedger.ledgerId,
         studentName: _currentEasebuzzLedger.studentName,
@@ -13163,7 +13250,7 @@ function doGenerateEasebuzzLink() {
         purpose: purpose
       };
 
-      document.getElementById('cf-generated-url').value = data.linkUrl;
+      document.getElementById('cf-generated-url').value = pUrl;
       document.getElementById('cf-status-badge').textContent = 'Pending Payment';
       document.getElementById('cf-status-badge').style.background = '#FEF3C7';
       document.getElementById('cf-status-badge').style.color = '#92400E';
@@ -13173,7 +13260,7 @@ function doGenerateEasebuzzLink() {
         if (data.linkQrCode) {
           qrImg.src = data.linkQrCode;
         } else {
-          qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(data.linkUrl);
+          qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(pUrl);
         }
       }
 
@@ -13227,19 +13314,56 @@ function sendEasebuzzOnWhatsApp() {
   var studentName = _currentEasebuzzLinkData.studentName || 'Student';
   var amount = _currentEasebuzzLinkData.amount || 0;
   var purpose = _currentEasebuzzLinkData.purpose || 'Hostel Fee';
-  var hostelName = (hostelSettings && hostelSettings.HOSTEL_NAME) ? hostelSettings.HOSTEL_NAME : "AMG Girls' Hostel";
+  var hostelName = (hostelSettings && hostelSettings.HOSTEL_NAME) ? hostelSettings.HOSTEL_NAME : "Matoshri Vatsala Mane Girls' Hostel";
 
   var message = "Namaste / Dear Parent & Student (" + studentName + "),\n\n"
-    + "This is a fee payment request from *" + hostelName + "*.\n\n"
+    + "This is an official fee payment request from *" + hostelName + "* (Easebuzz Payment Gateway Integration).\n\n"
     + "📋 *Fee Details:*\n"
     + "• *Student Name:* " + studentName + "\n"
     + "• *Purpose:* " + purpose + "\n"
-    + "• *Amount Payable:* ₹" + Number(amount).toLocaleString('en-IN') + "\n\n"
-    + "💳 *Online Payment Link (UPI / GPay / PhonePe / Card / NetBanking via Easebuzz):*\n"
+    + "• *Amount Payable:* ₹" + Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "\n\n"
+    + "💳 *Easebuzz Instant Online Payment Link (UPI / GPay / PhonePe / QR / Card / NetBanking):*\n"
     + _currentEasebuzzLinkData.linkUrl + "\n\n"
-    + "Kindly complete the payment through the link above. Once paid, your official fee receipt will be recorded automatically.\n\n"
+    + "Kindly complete the payment through the link above. Once paid, your official fee receipt will be generated and confirmed automatically.\n\n"
     + "Warm Regards,\n"
     + "*" + hostelName + " Administration*";
+
+  var waUrl = intlPhone
+    ? ("https://api.whatsapp.com/send?phone=" + intlPhone + "&text=" + encodeURIComponent(message))
+    : ("https://api.whatsapp.com/send?text=" + encodeURIComponent(message));
+
+  window.open(waUrl, '_blank');
+}
+
+function sendReceiptOnWhatsApp(receiptObj, studentPhone) {
+  if (!receiptObj) return;
+  var hostelName = (hostelSettings && hostelSettings.HOSTEL_NAME) ? hostelSettings.HOSTEL_NAME : "Matoshri Vatsala Mane Girls' Hostel";
+  var rId = receiptObj.receiptId || receiptObj.receipt_id || '';
+  var sName = receiptObj.studentName || receiptObj.student_name || 'Student';
+  var amt = parseFloat(receiptObj.amountPaid || receiptObj.amount_paid || 0);
+  var feeType = receiptObj.feeType || receiptObj.fee_type || 'Hostel Fee';
+  var dateStr = receiptObj.receiptDate || receiptObj.receipt_date || new Date().toISOString().split('T')[0];
+  var txnId = receiptObj.transactionId || receiptObj.transaction_id || '';
+  var mode = receiptObj.paymentMode || receiptObj.payment_mode || 'Online (Easebuzz)';
+
+  var message = "Namaste / Dear Parent & Student (" + sName + "),\n\n"
+    + "✅ *FEE PAYMENT RECEIPT CONFIRMATION*\n"
+    + "*" + hostelName + "*\n\n"
+    + "We have successfully received your fee payment via Easebuzz Payment Gateway:\n\n"
+    + "📄 *Receipt No:* " + rId + "\n"
+    + "📅 *Date:* " + dateStr + "\n"
+    + "👤 *Student Name:* " + sName + "\n"
+    + "🏷️ *Fee Head:* " + feeType + "\n"
+    + "💰 *Amount Paid:* ₹" + Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "\n"
+    + "💳 *Payment Mode:* " + mode + "\n"
+    + (txnId ? ("🔢 *Transaction ID:* " + txnId + "\n") : "")
+    + "\nThank you for your prompt payment!\n\n"
+    + "Warm Regards,\n"
+    + "*" + hostelName + " Administration*";
+
+  var rawPhone = (studentPhone || '').replace(/\D/g, '');
+  if (rawPhone.length > 10) rawPhone = rawPhone.slice(-10);
+  var intlPhone = rawPhone ? ('91' + rawPhone) : '';
 
   var waUrl = intlPhone
     ? ("https://api.whatsapp.com/send?phone=" + intlPhone + "&text=" + encodeURIComponent(message))
@@ -13268,9 +13392,9 @@ function doCheckEasebuzzStatus() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'check_status',
-      env: cfg.env || 'sandbox',
-      merchantKey: cfg.merchantKey || cfg.appId || '',
-      salt: cfg.salt || cfg.secretKey || '',
+      env: cfg.env || 'production',
+      merchantKey: cfg.merchantKey || cfg.appId || 'FRHPPBX6RF',
+      salt: cfg.salt || cfg.secretKey || '45UDY802LV',
       txnid: activeTxnId,
       linkId: activeTxnId
     })
@@ -13302,6 +13426,21 @@ function doCheckEasebuzzStatus() {
               viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
             }
             viewReceipt(res.receiptId, res.receipt);
+
+            // Automatically trigger WhatsApp receipt confirmation
+            try {
+              sendReceiptOnWhatsApp(res.receipt || {
+                receiptId: res.receiptId,
+                amountPaid: paidAmt,
+                studentName: _currentEasebuzzLinkData.studentName,
+                feeType: _currentEasebuzzLedger ? _currentEasebuzzLedger.headName : 'Hostel Fee',
+                transactionId: txnId,
+                paymentMode: 'Online (Easebuzz)'
+              }, _currentEasebuzzLinkData.phone);
+            } catch(waErr) {
+              console.warn('WhatsApp receipt trigger:', waErr);
+            }
+
           } else {
             showToast('Error recording fee in database: ' + res.message, 'error');
           }
