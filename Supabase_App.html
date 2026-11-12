@@ -7372,7 +7372,8 @@ window.google = {
               _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
               _supabase.from('fee_heads').select('*'),
               _supabase.from('student_fee_ledger').select('*').eq('app_id', cleanAppId),
-              _supabase.from('fee_receipts').select('*').eq('app_id', cleanAppId).neq('status', 'Cancelled')
+              _supabase.from('fee_receipts').select('*').eq('app_id', cleanAppId).neq('status', 'Cancelled'),
+              _supabase.from('rooms').select('room_number, room_type')
             ]).then(function(results) {
               var student = results[0].data;
               if (!student) return sCb({ success: false, message: 'Student ' + cleanAppId + ' not found.' });
@@ -7386,8 +7387,18 @@ window.google = {
               var allHeads = results[3].data || [];
               var currentLedger = results[4].data || [];
               var receipts = results[5].data || [];
+              var rooms = results[6].data || [];
 
               var roomType = student.room_type || 'Classic Tripple';
+              if (student.room_number) {
+                var foundRoom = rooms.find(function(r) { return r.room_number === student.room_number; });
+                if (foundRoom && foundRoom.room_type) {
+                  roomType = foundRoom.room_type;
+                  if (student.room_type !== roomType) {
+                    _supabase.from('students').update({ room_type: roomType }).eq('app_id', cleanAppId).then(function(){});
+                  }
+                }
+              }
               var collegeName = student.college_name || '';
 
               structures.forEach(function(s) {
