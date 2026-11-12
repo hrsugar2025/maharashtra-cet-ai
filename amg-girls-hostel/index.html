@@ -4343,6 +4343,47 @@ if (typeof window.google.script.run === 'undefined') {
 var SUPABASE_URL = "https://bhfiyrorfxvabquxmeiv.supabase.co";
 var SUPABASE_KEY = "sb_publishable_woMsdVpSPa7mKfHOeGGK8Q_paTZlW3K";
 var _supabase = (typeof window.supabase !== 'undefined' && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+// Helper to fetch all rows from any Supabase table bypassing 1,000-row PostgREST limits
+function supabaseFetchAll(table, selectFields, applyQuery) {
+  var fields = selectFields || '*';
+  return new Promise(function(resolve, reject) {
+    if (!_supabase) return resolve({ data: [], error: null });
+    var allRows = [];
+    var batchSize = 1000;
+    function fetchBatch(start) {
+      try {
+        var q = _supabase.from(table).select(fields);
+        if (typeof applyQuery === 'function') {
+          q = applyQuery(q) || q;
+        }
+        q.range(start, start + batchSize - 1)
+          .then(function(res) {
+            if (res.error) {
+              if (allRows.length > 0) return resolve({ data: allRows, error: null });
+              return resolve({ data: [], error: res.error });
+            }
+            var batch = res.data || [];
+            allRows = allRows.concat(batch);
+            if (batch.length < batchSize) {
+              resolve({ data: allRows, error: null });
+            } else {
+              fetchBatch(start + batchSize);
+            }
+          })
+          .catch(function(err) {
+            if (allRows.length > 0) return resolve({ data: allRows, error: null });
+            resolve({ data: [], error: err });
+          });
+      } catch (err) {
+        if (allRows.length > 0) return resolve({ data: allRows, error: null });
+        resolve({ data: [], error: err });
+      }
+    }
+    fetchBatch(0);
+  });
+}
+window.supabaseFetchAll = supabaseFetchAll;
 var AMG_LOGO_BASE64 = `data:image/jpeg;base64,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`;
 
 // Auto-sync UI profile and branding immediately
@@ -4764,10 +4805,10 @@ window.google = {
               _supabase.from('hostel_settings').select('*'),
               _supabase.from('room_types').select('*'),
               _supabase.from('fee_structures').select('*'),
-              _supabase.from('students').select('*'),
+              supabaseFetchAll('students'),
               _supabase.from('rooms').select('*'),
-              _supabase.from('fee_receipts').select('*'),
-              _supabase.from('student_fee_ledger').select('*')
+              supabaseFetchAll('fee_receipts'),
+              supabaseFetchAll('student_fee_ledger')
             ]).then(function(results) {
               var sMap = {};
               (results[0].data || []).forEach(function(r) { sMap[r.key] = r.value; });
@@ -4910,9 +4951,9 @@ window.google = {
           getAllotmentsBundle: function(academicYear) {
             Promise.all([
               _supabase.from('hostel_settings').select('*').eq('key', 'ROOM_ALLOTMENTS_DATA'),
-              _supabase.from('students').select('*'),
+              supabaseFetchAll('students'),
               _supabase.from('rooms').select('*'),
-              _supabase.from('student_fee_ledger').select('*')
+              supabaseFetchAll('student_fee_ledger')
             ]).then(function(results) {
               var settingRow = results[0].data && results[0].data[0];
               var storedAllotments = [];
@@ -5042,7 +5083,7 @@ window.google = {
                   return successCb({ success: true, data: list });
                 } catch(e) {}
               }
-              _supabase.from('students').select('*').not('room_number', 'is', null).then(function(sRes) {
+              supabaseFetchAll('students', '*', function(q){ return q.not('room_number', 'is', null); }).then(function(sRes) {
                 var list = (sRes.data || []).map(function(s) {
                   return {
                     allotmentId: 'ALT-' + s.app_id,
@@ -5391,7 +5432,7 @@ window.google = {
           },
 
           generateMissingAllotmentFees: function() {
-            _supabase.from('students').select('*').not('room_number', 'is', null).then(function(sRes) {
+            supabaseFetchAll('students', '*', function(q){ return q.not('room_number', 'is', null); }).then(function(sRes) {
               var allotted = sRes.data || [];
               var count = 0;
               var promises = allotted.map(function(s) {
@@ -6427,9 +6468,9 @@ window.google = {
               _supabase.from('room_types').select('id'),
               _supabase.from('college_courses').select('id'),
               _supabase.from('bank_accounts').select('id'),
-              _supabase.from('students').select('app_id'),
-              _supabase.from('fee_receipts').select('receipt_id'),
-              _supabase.from('student_fee_ledger').select('ledger_id')
+              supabaseFetchAll('students', 'app_id'),
+              supabaseFetchAll('fee_receipts', 'receipt_id'),
+              supabaseFetchAll('student_fee_ledger', 'ledger_id')
             ]).then(function(results) {
               var stats = {
                 rooms: (results[0].data || []).length,
@@ -6723,8 +6764,8 @@ window.google = {
           // ── PENDING FEES & ALL RECEIPTS DATA FIXES ──────────────
           getAllPendingFees: function(statusFilter, academicYear) {
             Promise.all([
-              _supabase.from('student_fee_ledger').select('*'),
-              _supabase.from('students').select('*')
+              supabaseFetchAll('student_fee_ledger'),
+              supabaseFetchAll('students')
             ]).then(function(results) {
               var ledger = results[0].data || [];
               var students = results[1].data || [];
@@ -6771,8 +6812,8 @@ window.google = {
 
           getFeeReceipts: function(appId, academicYear) {
             Promise.all([
-              _supabase.from('fee_receipts').select('*').order('receipt_date', { ascending: false }),
-              _supabase.from('students').select('*')
+              supabaseFetchAll('fee_receipts', '*', function(q){ return q.order('receipt_date', { ascending: false }); }),
+              supabaseFetchAll('students')
             ]).then(function(results) {
               var rcptsData = results[0].data || [];
               var studentsData = results[1].data || [];
@@ -6824,9 +6865,9 @@ window.google = {
           getFeesBundle: function(academicYear) {
             var yr = academicYear || '2026-27';
             Promise.all([
-              _supabase.from('fee_receipts').select('*').order('receipt_date', { ascending: false }),
-              _supabase.from('student_fee_ledger').select('*'),
-              _supabase.from('students').select('*')
+              supabaseFetchAll('fee_receipts', '*', function(q){ return q.order('receipt_date', { ascending: false }); }),
+              supabaseFetchAll('student_fee_ledger'),
+              supabaseFetchAll('students')
             ]).then(function(results) {
               var rcptsData = results[0].data || [];
               var ledgerData = results[1].data || [];
@@ -6999,7 +7040,7 @@ window.google = {
           },
 
           getBankReconciliationReport: function(academicYear) {
-            _supabase.from('fee_receipts').select('*').neq('payment_mode', 'Cash').neq('status', 'Cancelled').then(function(res) {
+            supabaseFetchAll('fee_receipts', '*', function(q){ return q.neq('payment_mode', 'Cash').neq('status', 'Cancelled'); }).then(function(res) {
               if (res.error) failureCb(res.error);
               else {
                 var rawData = (res.data || []).filter(function(f) { return f.status !== 'Cancelled'; });
@@ -7254,12 +7295,12 @@ window.google = {
           // ── PREVIEW COLLEGE FEE RECALCULATION ───────────────────
           previewCollegeFeeRecalculation: function(filterCollege, academicYear) {
             Promise.all([
-              _supabase.from('students').select('*').not('room_number', 'is', null),
+              supabaseFetchAll('students', '*', function(q){ return q.not('room_number', 'is', null); }),
               _supabase.from('fee_structures').select('*'),
               _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
               _supabase.from('fee_heads').select('*'),
-              _supabase.from('student_fee_ledger').select('*'),
-              _supabase.from('fee_receipts').select('*').neq('status', 'Cancelled')
+              supabaseFetchAll('student_fee_ledger'),
+              supabaseFetchAll('fee_receipts', '*', function(q){ return q.neq('status', 'Cancelled'); })
             ]).then(function(results) {
               var students = results[0].data || [];
               var structures = results[1].data || [];
@@ -7963,10 +8004,11 @@ window.google = {
           
           // ── REPORTS TAB IMPLEMENTATIONS ──────────────────────────
           getFeeCollectionReport: function(month, year, academicYear, fromDate, toDate, feeType) {
-            var q = _supabase.from('fee_receipts').select('*').order('receipt_date', { ascending: false });
-            if (academicYear && academicYear !== 'All') q = q.eq('academic_year', academicYear);
-
-            q.then(function(res) {
+            supabaseFetchAll('fee_receipts', '*', function(q) {
+              var query = q.order('receipt_date', { ascending: false });
+              if (academicYear && academicYear !== 'All') query = query.eq('academic_year', academicYear);
+              return query;
+            }).then(function(res) {
               if (res.error) return failureCb(res.error);
               var fees = (res.data || []).map(function(f, i) {
                 var amtPaid = parseFloat(f.amount_paid) || parseFloat(f.amount) || parseFloat(f.fee_month) || 0;
@@ -8115,9 +8157,9 @@ window.google = {
 
           getStudentRegister: function(academicYear) {
             Promise.all([
-              _supabase.from('students').select('*'),
+              supabaseFetchAll('students'),
               _supabase.from('rooms').select('*'),
-              _supabase.from('student_fee_ledger').select('*')
+              supabaseFetchAll('student_fee_ledger')
             ]).then(function(results) {
               var students = results[0].data || [];
               var rooms = results[1].data || [];
