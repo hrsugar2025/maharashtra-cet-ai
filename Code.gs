@@ -4255,6 +4255,90 @@ function restoreFeeReceipt(receiptId) {
   }
 }
 
+function cancelPartialAccommodation(appId, amount) {
+  try {
+    // Fetch active receipts for the student
+    var receiptRes = getFeeReceipts(appId);
+    if (!receiptRes.success) return { success:false, message: 'Failed to load receipts' };
+    var receipts = receiptRes.data || [];
+    for (var i=0;i<receipts.length;i++) {
+      var r = receipts[i];
+      if (!r || r.status !== 'Active') continue;
+      var type = (r.feeType || '').toString().toLowerCase();
+      if (type.indexOf('accommodation') === -1) continue;
+      var amt = parseFloat(r.amountPaid) || 0;
+      if (Math.abs(amt - amount) < 0.01) {
+        // Cancel this receipt
+        return cancelFeeReceipt(r.receiptId, 'Cancelled partial accommodation charge');
+      }
+    }
+    return { success:false, message: 'No matching active accommodation receipt of amount ₹'+amount };
+  } catch(e) {
+    return { success:false, message: e.message };
+  }
+}
+
+function cancelSnehaPartialAccommodation(){
+  try{
+    var targetName='Sneha Santosh Pukale';
+    var props=PropertiesService.getScriptProperties();
+    if(props.getProperty('snehaAccomCancelled')==='true')return {success:true,message:'Already cancelled'};
+    // Find appId from ledger sheet
+    var ledgerSheet=getSheet('STUDENT_FEE_LEDGER');
+    var ledgerData=ledgerSheet.getDataRange().getValues();
+    var appId=null;
+    for(var i=1;i<ledgerData.length;i++){
+      var name=(ledgerData[i][2]||'').toString().trim().toLowerCase();
+      if(name===targetName.toLowerCase()){
+        appId=(ledgerData[i][1]||'').toString().trim();
+        break;
+      }
+    }
+    if(!appId) return {success:false,message:'Student not found in ledger'};
+    // Adjust accommodation ledger entry
+    var adjusted=false;
+    for(var i=1;i<ledgerData.length;i++){
+      if(ledgerData[i][1].toString().trim()!==appId) continue;
+      var feeType=(ledgerData[i][6]||'').toString().toLowerCase();
+      if(feeType.indexOf('accommodation')===-1) continue;
+      var paid=parseFloat(ledgerData[i][9])||0;
+      if(paid>=1000){
+        var applicable=parseFloat(ledgerData[i][8])||0;
+        var newPaid=paid-1000;
+        var newBal=applicable-newPaid;
+        var newStatus=newBal<=0?'Paid':(newPaid>0?'Partial':'Pending');
+        ledgerSheet.getRange(i+1,10).setValue(newPaid);
+        ledgerSheet.getRange(i+1,11).setValue(newBal);
+        ledgerSheet.getRange(i+1,13).setValue(newStatus);
+        adjusted=true;
+        break;
+      }
+    }
+    if(!adjusted) return {success:false,message:'No accommodation ledger entry with sufficient paid amount'};
+    // Cancel matching receipt
+    var receiptSheet=getSheet('FEE_RECEIPTS');
+    var receiptData=receiptSheet.getDataRange().getValues();
+    for(var j=1;j<receiptData.length;j++){
+      if((receiptData[j][2]||'').toString().trim()!==appId) continue;
+      var feeType=(receiptData[j][5]||'').toString().toLowerCase();
+      if(feeType.indexOf('accommodation')===-1) continue;
+      var amt=parseFloat(receiptData[j][6])||0;
+      var status=(receiptData[j][13]||'').toString().trim().toLowerCase();
+      if(Math.abs(amt-1000)<0.01 && status!=='cancelled'){
+        var row=j+1;
+        receiptSheet.getRange(row,14).setValue('Cancelled');
+        receiptSheet.getRange(row,13).setValue('Cancelled partial accommodation charge');
+        break;
+      }
+    }
+    props.setProperty('snehaAccomCancelled','true');
+    return {success:true,message:'Partial accommodation charge cancelled for Sneha'};
+  }catch(e){return {success:false,message:e.message};}
+}
+// Auto‑run once on script load (guarded)
+var _snehaResult = cancelSnehaPartialAccommodation();
+Logger.log(JSON.stringify(_snehaResult));
+
 // ── 14. CHANGE ROOM ALLOTMENT ─────────────────────────────────
 
 function changeRoomAllotment(oldAllotmentId, newRoomId, newRoomNumber, newRoomType, changedBy, applyNewFees) {
