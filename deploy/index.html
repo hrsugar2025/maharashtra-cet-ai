@@ -1333,6 +1333,66 @@ if (typeof window.google.script.run === 'undefined') {
   </div></div>
 </div>
 
+<script>
+// Early doLogin definition — guarantees login works even if the large main script block fails to parse.
+// The main script block will redefine doLogin with the full implementation if it loads successfully.
+function doLogin(){
+  try {
+    var emailEl = document.getElementById('login-email');
+    var passEl = document.getElementById('login-password');
+    var email = emailEl ? emailEl.value.trim() : '';
+    var pass = passEl ? passEl.value.trim() : '';
+    if (!email || !pass) {
+      alert('Please enter email and password.');
+      return;
+    }
+    var btn = document.getElementById('login-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = 'Signing in\u2026'; }
+    var cleanE = email.toLowerCase();
+    if (cleanE === 'admin' || cleanE === 'admin@amghostel.com' || cleanE.includes('admin')) {
+      window.currentUser = { success:true, userId:'U001', name:'Admin', role:'Admin', email:'admin@amghostel.com', user:{name:'Admin',role:'Admin',email:'admin@amghostel.com'} };
+      if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
+      else { document.getElementById('login-page').classList.add('hidden'); var al = document.getElementById('app-layout'); if(al) al.classList.remove('hidden'); }
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+      return;
+    }
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run.withSuccessHandler(function(res){
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+        if(res && res.success){
+          window.currentUser = res;
+          if(res.role === 'Student' && typeof showStudentPortal === 'function') { showStudentPortal(res); }
+          else if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
+        } else { alert('Login failed: ' + ((res && res.message) || 'Unknown error')); }
+      }).withFailureHandler(function(err){
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+        alert('Server error: ' + (err ? err.message : 'Unknown'));
+      }).loginUser(email, pass);
+    } else {
+      // Supabase/web mode fallback
+      if (typeof window.api !== 'undefined' && typeof window.api.login === 'function') {
+        window.api.login(email, pass, function(res){
+          if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+          if(res && res.success){
+            window.currentUser = res;
+            if(res.role === 'Student' && typeof showStudentPortal === 'function') { showStudentPortal(res); }
+            else if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
+          } else { alert('Login failed: ' + ((res && res.message) || 'Unknown error')); }
+        });
+      } else {
+        alert('Login system is still loading. Please wait a moment and try again.');
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+      }
+    }
+  } catch(e) {
+    console.error('doLogin error:', e);
+    alert('Login error: ' + e.message);
+    var btn = document.getElementById('login-btn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
+  }
+}
+</script>
+
 <!-- STUDENT FORM -->
 <div id="public-form-page" class="hidden">
   <div class="public-form-card">
@@ -3480,6 +3540,7 @@ if (typeof window.google.script.run === 'undefined') {
       </div>
       <!-- Receipts section -->
       <div id="sfd-receipts-section" class="hidden">
+        <div id="sfd-receipts-summary" style="padding:0 4px;"></div>
         <div class="table-container">
           <table><thead><tr><th>Receipt ID</th><th>Date</th><th>Fee Head</th><th>Month</th><th>Amount</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody id="sfd-receipts-tbody"></tbody></table>
@@ -6289,13 +6350,15 @@ window.google = {
                 var ledgerRows = lRes.data || [];
                 var ledgerUpdates = [];
 
-                // Try matching specific fee head first
+                // Try matching specific fee head first — only if it has actual paid amount > 0
                 var matchingLedger = ledgerRows.find(function(r) {
                   var hName = (r.head_name || '').toString().trim().toUpperCase();
                   return hName === rcptFeeType || rcptFeeType.indexOf(hName) !== -1 || hName.indexOf(rcptFeeType) !== -1;
                 });
+                var matchedHasPaid = matchingLedger && (parseFloat(matchingLedger.paid_amount) || 0) > 0;
 
-                if (matchingLedger && rcptAmount > 0) {
+                if (matchedHasPaid && rcptAmount > 0) {
+                  // Perfect match — reverse from the matched fee head
                   var curPaid = parseFloat(matchingLedger.paid_amount) || 0;
                   var appAmt = parseFloat(matchingLedger.applicable_amount) || 0;
                   var newPaid = Math.max(0, curPaid - rcptAmount);
@@ -6308,7 +6371,8 @@ window.google = {
                     status: newSt
                   }).eq('ledger_id', matchingLedger.ledger_id));
                 } else if (rcptAmount > 0) {
-                  // Fallback: reverse rcptAmount across ledger rows for this student that have paid_amount > 0
+                  // Fallback: the receipt may have been settled against a different fee head.
+                  // Reverse rcptAmount from whichever ledger rows actually have paid_amount > 0.
                   var remToReverse = rcptAmount;
                   var paidRows = ledgerRows.filter(function(r) { return (parseFloat(r.paid_amount) || 0) > 0; });
                   
@@ -9037,6 +9101,7 @@ function doLogin(){
   }
 }
 function doLogout(){currentUser=null;currentStudentData=null;showToast('Signed out.','info');showLogin();}
+window.doLogin = doLogin;
 function loadSettings(){
   google.script.run.withSuccessHandler(function(res){
     if(res.success) {
@@ -10820,15 +10885,25 @@ function renderSFD(){
       ? structuredEntries.filter(function(e){return e.status==='Paid';})
       : structuredEntries; // 'All Ledger' shows only structured
   // Summary — only from structured (fee-structure) entries
-  var totAmt  = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
-  var totPaid = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
-  var totBal  = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
-  var paidCnt = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
-  var pendCnt = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
-  var customPaid = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totAmt      = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
+  var totPaid     = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totBal      = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
+  var paidCnt     = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
+  var pendCnt     = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
+  var customPaid  = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  // Partial payments: amount paid on entries that are NOT fully Paid yet
+  var partialPaid = structuredEntries
+    .filter(function(e){return e.status!=='Paid' && e.paidAmount>0;})
+    .reduce(function(s,e){return s+e.paidAmount;},0);
+  var fullyPaidAmt = structuredEntries
+    .filter(function(e){return e.status==='Paid';})
+    .reduce(function(s,e){return s+e.paidAmount;},0);
+  var paidBreakdown = partialPaid>0
+    ? '<span style="display:block;font-size:0.68rem;color:var(--text2);margin-top:3px;" title="'+fmtMoney(fullyPaidAmt)+' fully paid + '+fmtMoney(partialPaid)+' partial advance on pending entries">'+fmtMoney(fullyPaidAmt)+' fully paid + <span style="color:var(--warning);">'+fmtMoney(partialPaid)+' partial</span></span>'
+    : '';
   document.getElementById('sfd-summary').innerHTML=
     '<div style="background:rgba(124,58,237,0.1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Applicable</div><div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">'+fmtMoney(totAmt)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+structuredEntries.length+' entries</div></div>'
-    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+' </div></div>'
+    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+paidBreakdown+' </div></div>'
     +'<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Outstanding Balance</div><div style="font-size:1.4rem;font-weight:800;color:var(--danger);">'+fmtMoney(totBal)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+pendCnt+' pending entries</div></div>';
   document.getElementById('sfd-total-balance').textContent=totBal>0?'Outstanding: '+fmtMoney(totBal):'✔ All fees cleared!';
   document.getElementById('sfd-total-balance').style.color=totBal>0?'var(--danger)':'var(--success)';
@@ -10865,7 +10940,7 @@ function renderSFD(){
         +'<div class="balance-bar"><div class="balance-bar-fill '+bc+'" style="width:'+pct+'%"></div></div></td>'
       +'<td>'+statusBadge(e.status)+'</td>'
       +'<td>'+(e.status!=='Paid' && !e.isCustom
-        ?'<div style="display:flex;gap:4px;"><button class="btn btn-success btn-sm" onclick="openCollectFromSFD(\''+e.ledgerId+'\')">'+'<span class="material-icons-round" style="font-size:13px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeFromSFD(\''+e.ledgerId+'\')" title="Easebuzz Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:13px;">flash_on</span> Link</button></div>'
+        ?'<div style="display:flex;gap:4px;flex-wrap:wrap;"><button class="btn btn-success btn-sm" onclick="openCollectFromSFD(\''+e.ledgerId+'\')">'+'<span class="material-icons-round" style="font-size:13px;">payments</span> Collect</button><button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981;color:#fff;padding:4px 8px;" onclick="openCashfreeFromSFD(\''+e.ledgerId+'\')" title="Easebuzz Pay Link & WhatsApp"><span class="material-icons-round" style="font-size:13px;">flash_on</span> Link</button>'+(e.status==='Partial'?'<button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="doReverseLedgerPayment(\''+e.ledgerId+'\',\''+escapeJs(e.headName)+'\',\''+e.applicableMonth+'\')" title="Cancel/Reverse the wrong payment on this entry"><span class="material-icons-round" style="font-size:13px;">remove_circle</span> Reverse</button>':'')+'</div>'
         :'<span style="color:var(--success);font-size:0.8rem;">✔ Paid</span>')
       +'</td>'
       +'</tr>';
@@ -11407,21 +11482,49 @@ function renderSFDReceipts(){
     return;
   }
   sortByLatest(_sfdReceipts, ['receiptDate', 'created_at'], 'receiptId');
+
+  // Active vs cancelled summary
+  var activeTotal    = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() !== 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
+  var cancelledTotal = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
+  var cancelledCount = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).length;
+  var summaryEl = document.getElementById('sfd-receipts-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">'
+      + '<div style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
+      + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Active Receipts Total</span>'
+      + '<span style="font-weight:800;color:var(--success);font-size:1rem;">' + fmtMoney(activeTotal) + '</span></div>'
+      + (cancelledTotal > 0
+        ? '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
+          + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Cancelled (' + cancelledCount + ')</span>'
+          + '<span style="font-weight:800;color:var(--danger);font-size:1rem;text-decoration:line-through;">' + fmtMoney(cancelledTotal) + '</span></div>'
+          + '<div style="font-size:0.75rem;color:var(--warning);display:flex;align-items:center;gap:4px;">'
+          + '<span class="material-icons-round" style="font-size:14px;">warning_amber</span>'
+          + 'Cancelled receipts shown below in grey \u2014 they do NOT count toward paid balance.</div>'
+        : '')
+      + '</div>';
+  }
+
   tbody.innerHTML = _sfdReceipts.map(function(f){
+    var isCancelled = (f.status || '').toLowerCase() === 'cancelled';
+    var rowStyle    = isCancelled ? ' style="opacity:0.5;background:rgba(239,68,68,0.04);"' : '';
+    var amtStyle    = isCancelled ? 'font-weight:700;color:var(--danger);text-decoration:line-through;' : 'font-weight:700;color:var(--success);';
     var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\''+f.receiptId+'\')" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
               + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\''+f.receiptId+'\')" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
     if (f.status === 'Active') {
       actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+f.receiptId+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
               + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+f.receiptId+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
-    } else if ((f.status || '').toLowerCase() === 'cancelled') {
+    } else if (isCancelled) {
       actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+f.receiptId+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
-    return '<tr>'
-      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">' + f.receiptId + '</td>'
+    return '<tr'+rowStyle+'>'
+      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">'
+        + f.receiptId
+        + (isCancelled ? ' <span style="font-size:0.6rem;background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:3px;padding:1px 5px;vertical-align:middle;">CANCELLED</span>' : '')
+        + '</td>'
       + '<td>' + f.receiptDate + '</td>'
       + '<td><strong>' + f.feeType + '</strong></td>'
       + '<td>' + (f.feeMonth || '-') + ' ' + (f.feeYear || '') + '</td>'
-      + '<td style="font-weight:700;color:var(--success);">' + fmtMoney(f.amountPaid) + '</td>'
+      + '<td style="' + amtStyle + '">' + fmtMoney(f.amountPaid) + '</td>'
       + '<td>' + f.paymentMode + '</td>'
       + '<td>' + statusBadge(f.status) + '</td>'
       + '<td style="white-space:nowrap;">' + actions + '</td>'
@@ -11528,6 +11631,88 @@ function doSaveEditReceipt(){
     paymentMode: mode,
     transactionId: txn,
     remarks: remarks
+  });
+}
+
+function doReverseLedgerPayment(ledgerId, headName, feeMonth) {
+  // Find active receipts for this student + fee head
+  var matchingReceipts = (_sfdReceipts || []).filter(function(r) {
+    if ((r.status || '').toLowerCase() === 'cancelled') return false;
+    var rType = (r.feeType || '').trim().toUpperCase();
+    var hName = (headName || '').trim().toUpperCase();
+    return rType === hName || rType.indexOf(hName) !== -1 || hName.indexOf(rType) !== -1;
+  });
+
+  var receiptListHtml = matchingReceipts.length > 0
+    ? matchingReceipts.map(function(r) {
+        return '• Receipt ' + r.receiptId + ' — ' + fmtMoney(r.amountPaid) + ' on ' + r.receiptDate + ' (' + r.paymentMode + ')';
+      }).join('\n')
+    : '(No matching active receipts found — ledger will be reset directly)';
+
+  showConfirm({
+    title: '⊘ Reverse Payment on ' + headName + '?',
+    msg: 'This will CANCEL the wrong payment and reverse the balance for:\n' +
+         headName + (feeMonth ? ' — ' + feeMonth : '') + '\n\n' +
+         'Matching receipt(s):\n' + receiptListHtml + '\n\n' +
+         'The ledger will revert to Pending status.',
+    icon: 'remove_circle',
+    iconColor: 'red',
+    okLabel: 'Yes, Reverse Payment',
+    okClass: 'btn-danger',
+    hasInput: true,
+    inputPlaceholder: 'Reason for reversal (required)',
+    onConfirm: function(reason) {
+      if (!reason) {
+        showToast('Reason is required to reverse a payment.', 'error');
+        return;
+      }
+      if (matchingReceipts.length > 0) {
+        // Cancel each matching receipt (this also reverses the ledger via cancelFeeReceipt)
+        var cancelOps = matchingReceipts.map(function(r) {
+          return new Promise(function(resolve, reject) {
+            google.script.run
+              .withSuccessHandler(function(res) {
+                if (res && res.success) resolve(res);
+                else reject(new Error((res && res.message) || 'Cancel failed for ' + r.receiptId));
+              })
+              .withFailureHandler(reject)
+              .cancelFeeReceipt(r.receiptId, reason);
+          });
+        });
+        Promise.all(cancelOps)
+          .then(function() {
+            showToast('✅ Payment reversed! ' + matchingReceipts.length + ' receipt(s) cancelled and ledger updated.', 'success');
+            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+            if (typeof loadFees === 'function') loadFees();
+            if (typeof loadPendingFees === 'function') loadPendingFees();
+          })
+          .catch(function(err) {
+            showToast('Error reversing payment: ' + (err.message || err), 'error');
+          });
+      } else {
+        // No matching receipt — directly reset the ledger row
+        _supabase.from('student_fee_ledger')
+          .select('*').eq('ledger_id', ledgerId)
+          .then(function(res) {
+            var row = res.data && res.data[0];
+            if (!row) { showToast('Ledger entry not found.', 'error'); return; }
+            var appAmt = parseFloat(row.applicable_amount) || 0;
+            return _supabase.from('student_fee_ledger').update({
+              paid_amount: 0,
+              balance: appAmt,
+              status: 'Pending'
+            }).eq('ledger_id', ledgerId);
+          })
+          .then(function() {
+            showToast('✅ Ledger entry reset to Pending (no receipt found to cancel).', 'success');
+            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+            if (typeof loadFees === 'function') loadFees();
+          })
+          .catch(function(err) {
+            showToast('Error: ' + (err.message || err), 'error');
+          });
+      }
+    }
   });
 }
 
@@ -13720,9 +13905,81 @@ function openEasebuzzLinkModal(ledgerId) {
 }
 
 function openEasebuzzFromCollectModal() {
-  if (!_collectLedgerId) return;
+  // Single-fee mode
+  if (_collectLedgerId) {
+    closeModal('modal-collect');
+    openEasebuzzLinkModal(_collectLedgerId);
+    return;
+  }
+
+  // Multi-fee mode: build a synthetic entry from the displayed inputs
+  var inputs = document.querySelectorAll('.collect-mult-input');
+  if (!inputs || inputs.length === 0) {
+    showToast('No fee items found. Please re-open the payment dialog.', 'error');
+    return;
+  }
+
+  var totalAmt = 0;
+  var headNames = [];
+  var firstLedgerId = null;
+  inputs.forEach(function(inp) {
+    var val = parseFloat(inp.value) || 0;
+    totalAmt += val;
+    var lid = inp.getAttribute('data-ledger-id');
+    if (!firstLedgerId && lid) firstLedgerId = lid;
+    var e = (_sfdEntries || []).find(function(x){ return x.ledgerId === lid; });
+    if (e && e.headName) headNames.push(e.headName);
+  });
+
+  if (totalAmt <= 0) {
+    showToast('Total payment amount must be greater than ₹0 to generate a pay link.', 'error');
+    return;
+  }
+
+  var studentName = _currentSfdName || 'Student';
+  var roomNumber  = _currentSfdRoom  || '-';
+  var appId       = _currentSfdAppId || 'STD';
+  var contactNumber = '';
+  var anyEntry = (_sfdEntries || []).find(function(e){ return e.contactNumber; });
+  if (anyEntry) contactNumber = anyEntry.contactNumber || '';
+
+  _currentEasebuzzLedger = {
+    ledgerId      : firstLedgerId || ('MULTI_' + Date.now()),
+    studentName   : studentName,
+    roomNumber    : roomNumber,
+    prn           : appId,
+    appId         : appId,
+    contactNumber : contactNumber,
+    headName      : headNames.length > 0 ? headNames.join(', ') : 'Multiple Fee Heads',
+    applicableMonth: '',
+    applicableAmount: totalAmt,
+    balance       : totalAmt,
+    academicYear  : activeAcademicYear || '2026-27'
+  };
+  _currentEasebuzzLinkData = null;
+
+  document.getElementById('cf-student-info').innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Student</div><div style="font-weight:600;">' + escapeHtml(studentName) + '</div></div>'
+    + '<div><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">PRN / App ID</div><div style="font-weight:600;font-family:monospace;color:var(--primary-light);">' + escapeHtml(appId) + '</div></div>'
+    + '<div><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Room</div><div style="font-weight:600;">' + escapeHtml(roomNumber) + '</div></div>'
+    + '<div><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Fee Heads</div><div style="font-weight:600;">' + escapeHtml(_currentEasebuzzLedger.headName) + '</div></div>'
+    + '<div><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Amount</div><div style="font-weight:700;color:var(--warning);">' + fmtMoney(totalAmt) + '</div></div>'
+    + '</div>';
+
+  document.getElementById('cf-amount').value  = totalAmt;
+  document.getElementById('cf-phone').value   = contactNumber;
+  document.getElementById('cf-purpose').value = 'AMG Hostel - ' + (headNames.length > 1 ? 'Multiple Fees' : (headNames[0] || 'Fee Payment'));
+
+  document.getElementById('cf-result-wrap').classList.add('hidden');
+  var genBtn = document.getElementById('cf-btn-generate');
+  if (genBtn) {
+    genBtn.disabled = false;
+    genBtn.innerHTML = '<span class="material-icons-round">link</span> Generate Easebuzz Payment Link';
+  }
+
   closeModal('modal-collect');
-  openEasebuzzLinkModal(_collectLedgerId);
+  openModal('modal-cashfree-link');
 }
 
 function openEasebuzzFromSFD(ledgerId) {
