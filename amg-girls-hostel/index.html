@@ -9038,6 +9038,7 @@ function doLogin(){
   }
 }
 function doLogout(){currentUser=null;currentStudentData=null;showToast('Signed out.','info');showLogin();}
+window.doLogin = doLogin;
 function loadSettings(){
   google.script.run.withSuccessHandler(function(res){
     if(res.success) {
