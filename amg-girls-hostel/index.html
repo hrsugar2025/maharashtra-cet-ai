@@ -11444,13 +11444,13 @@ function renderSFDReceipts(){
     var isCancelled = (f.status || '').toLowerCase() === 'cancelled';
     var rowStyle    = isCancelled ? ' style="opacity:0.5;background:rgba(239,68,68,0.04);"' : '';
     var amtStyle    = isCancelled ? 'font-weight:700;color:var(--danger);text-decoration:line-through;' : 'font-weight:700;color:var(--success);';
-    var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\\''+f.receiptId+'\\')\" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
-              + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\\''+f.receiptId+'\\')\" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
+    var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\''+f.receiptId+'\')" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
+              + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\''+f.receiptId+'\')" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
     if (f.status === 'Active') {
-      actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\\''+f.receiptId+'\\')\" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
-              + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\\''+f.receiptId+'\\')\" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
+      actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+f.receiptId+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
+              + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+f.receiptId+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
     } else if (isCancelled) {
-      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\\'0.85\\'" onmouseout="this.style.opacity=\\'1\\'" onclick="doRestoreReceipt(\\''+f.receiptId+'\\')\" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
+      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+f.receiptId+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
     return '<tr'+rowStyle+'>'
       + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">'
