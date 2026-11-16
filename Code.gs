@@ -4145,6 +4145,37 @@ function cancelFeeReceipt(receiptId, reason) {
               }
             }
           });
+        } else {
+          // ── FALLBACK: ledgerId link missing — reverse by appId + feeType + amount match ──
+          var rcptAppId   = (data[i][2] || "").toString().trim();
+          var rcptFeeType = (data[i][5] || "").toString().trim().toLowerCase();
+          if (rcptAppId && rcptFeeType && oldAmount > 0) {
+            var ldgSheet2 = getSheet("STUDENT_FEE_LEDGER");
+            var ldgData2  = ldgSheet2.getDataRange().getValues();
+            var amtLeft   = oldAmount;
+            for (var j2 = 0; j2 < ldgData2.length && amtLeft > 0; j2++) {
+              if (!ldgData2[j2][0] || ldgData2[j2][0].toString().trim().toUpperCase() === "LEDGER_ID") continue;
+              var lAppId    = (ldgData2[j2][1] || "").toString().trim();
+              var lHeadName = (ldgData2[j2][6] || "").toString().trim().toLowerCase();
+              var lStatus   = (ldgData2[j2][12] || "").toString().trim().toLowerCase();
+              if (lAppId !== rcptAppId) continue;
+              if (lStatus === "cancelled" || lStatus === "pending") continue;
+              if (lHeadName.indexOf(rcptFeeType) === -1 && rcptFeeType.indexOf(lHeadName) === -1) continue;
+              var applicable2  = parseFloat(ldgData2[j2][8]) || 0;
+              var currentPaid2 = parseFloat(ldgData2[j2][9]) || 0;
+              if (currentPaid2 <= 0) continue;
+              var reverseAmt  = Math.min(currentPaid2, amtLeft);
+              var newPaid2    = Math.max(0, currentPaid2 - reverseAmt);
+              var newBalance2 = applicable2 - newPaid2;
+              ldgSheet2.getRange(j2 + 1, 10).setValue(newPaid2);
+              ldgSheet2.getRange(j2 + 1, 11).setValue(newBalance2);
+              ldgSheet2.getRange(j2 + 1, 13).setValue(newPaid2 > 0 ? "Partial" : "Pending");
+              // Write the found ledgerId back to the receipt for future reference
+              sheet.getRange(rowNum, 15).setValue(ldgData2[j2][0].toString().trim());
+              amtLeft -= reverseAmt;
+              Logger.log("cancelFeeReceipt fallback: reversed \u20B9" + reverseAmt + " from ledger " + ldgData2[j2][0] + " for receipt " + receiptId);
+            }
+          }
         }
         return { success: true };
       }

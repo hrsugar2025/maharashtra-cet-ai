@@ -3480,6 +3480,7 @@ if (typeof window.google.script.run === 'undefined') {
       </div>
       <!-- Receipts section -->
       <div id="sfd-receipts-section" class="hidden">
+        <div id="sfd-receipts-summary" style="padding:0 4px;"></div>
         <div class="table-container">
           <table><thead><tr><th>Receipt ID</th><th>Date</th><th>Fee Head</th><th>Month</th><th>Amount</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody id="sfd-receipts-tbody"></tbody></table>
@@ -10820,15 +10821,25 @@ function renderSFD(){
       ? structuredEntries.filter(function(e){return e.status==='Paid';})
       : structuredEntries; // 'All Ledger' shows only structured
   // Summary — only from structured (fee-structure) entries
-  var totAmt  = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
-  var totPaid = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
-  var totBal  = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
-  var paidCnt = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
-  var pendCnt = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
-  var customPaid = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totAmt      = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
+  var totPaid     = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totBal      = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
+  var paidCnt     = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
+  var pendCnt     = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
+  var customPaid  = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  // Partial payments: amount paid on entries that are NOT fully Paid yet
+  var partialPaid = structuredEntries
+    .filter(function(e){return e.status!=='Paid' && e.paidAmount>0;})
+    .reduce(function(s,e){return s+e.paidAmount;},0);
+  var fullyPaidAmt = structuredEntries
+    .filter(function(e){return e.status==='Paid';})
+    .reduce(function(s,e){return s+e.paidAmount;},0);
+  var paidBreakdown = partialPaid>0
+    ? '<span style="display:block;font-size:0.68rem;color:var(--text2);margin-top:3px;" title="'+fmtMoney(fullyPaidAmt)+' fully paid + '+fmtMoney(partialPaid)+' partial advance on pending entries">'+fmtMoney(fullyPaidAmt)+' fully paid + <span style="color:var(--warning);">'+fmtMoney(partialPaid)+' partial</span></span>'
+    : '';
   document.getElementById('sfd-summary').innerHTML=
     '<div style="background:rgba(124,58,237,0.1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Applicable</div><div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">'+fmtMoney(totAmt)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+structuredEntries.length+' entries</div></div>'
-    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+' </div></div>'
+    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+paidBreakdown+' </div></div>'
     +'<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Outstanding Balance</div><div style="font-size:1.4rem;font-weight:800;color:var(--danger);">'+fmtMoney(totBal)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+pendCnt+' pending entries</div></div>';
   document.getElementById('sfd-total-balance').textContent=totBal>0?'Outstanding: '+fmtMoney(totBal):'✔ All fees cleared!';
   document.getElementById('sfd-total-balance').style.color=totBal>0?'var(--danger)':'var(--success)';
@@ -11407,21 +11418,49 @@ function renderSFDReceipts(){
     return;
   }
   sortByLatest(_sfdReceipts, ['receiptDate', 'created_at'], 'receiptId');
+
+  // Active vs cancelled summary
+  var activeTotal    = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() !== 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
+  var cancelledTotal = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
+  var cancelledCount = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).length;
+  var summaryEl = document.getElementById('sfd-receipts-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">'
+      + '<div style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
+      + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Active Receipts Total</span>'
+      + '<span style="font-weight:800;color:var(--success);font-size:1rem;">' + fmtMoney(activeTotal) + '</span></div>'
+      + (cancelledTotal > 0
+        ? '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
+          + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Cancelled (' + cancelledCount + ')</span>'
+          + '<span style="font-weight:800;color:var(--danger);font-size:1rem;text-decoration:line-through;">' + fmtMoney(cancelledTotal) + '</span></div>'
+          + '<div style="font-size:0.75rem;color:var(--warning);display:flex;align-items:center;gap:4px;">'
+          + '<span class="material-icons-round" style="font-size:14px;">warning_amber</span>'
+          + 'Cancelled receipts shown below in grey \u2014 they do NOT count toward paid balance.</div>'
+        : '')
+      + '</div>';
+  }
+
   tbody.innerHTML = _sfdReceipts.map(function(f){
-    var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\''+f.receiptId+'\')" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
-              + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\''+f.receiptId+'\')" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
+    var isCancelled = (f.status || '').toLowerCase() === 'cancelled';
+    var rowStyle    = isCancelled ? ' style="opacity:0.5;background:rgba(239,68,68,0.04);"' : '';
+    var amtStyle    = isCancelled ? 'font-weight:700;color:var(--danger);text-decoration:line-through;' : 'font-weight:700;color:var(--success);';
+    var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\\''+f.receiptId+'\\')\" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
+              + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\\''+f.receiptId+'\\')\" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
     if (f.status === 'Active') {
-      actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+f.receiptId+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
-              + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+f.receiptId+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
-    } else if ((f.status || '').toLowerCase() === 'cancelled') {
-      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+f.receiptId+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
+      actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\\''+f.receiptId+'\\')\" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
+              + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\\''+f.receiptId+'\\')\" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
+    } else if (isCancelled) {
+      actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\\'0.85\\'" onmouseout="this.style.opacity=\\'1\\'" onclick="doRestoreReceipt(\\''+f.receiptId+'\\')\" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
-    return '<tr>'
-      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">' + f.receiptId + '</td>'
+    return '<tr'+rowStyle+'>'
+      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">'
+        + f.receiptId
+        + (isCancelled ? ' <span style="font-size:0.6rem;background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:3px;padding:1px 5px;vertical-align:middle;">CANCELLED</span>' : '')
+        + '</td>'
       + '<td>' + f.receiptDate + '</td>'
       + '<td><strong>' + f.feeType + '</strong></td>'
       + '<td>' + (f.feeMonth || '-') + ' ' + (f.feeYear || '') + '</td>'
-      + '<td style="font-weight:700;color:var(--success);">' + fmtMoney(f.amountPaid) + '</td>'
+      + '<td style="' + amtStyle + '">' + fmtMoney(f.amountPaid) + '</td>'
       + '<td>' + f.paymentMode + '</td>'
       + '<td>' + statusBadge(f.status) + '</td>'
       + '<td style="white-space:nowrap;">' + actions + '</td>'
