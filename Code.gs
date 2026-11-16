@@ -9414,3 +9414,204 @@ function syncAllDataToSupabase() {
   }
 }
 
+
+
+// ── FEE RECONCILIATION & AUDIT TOOLS ─────────────────────────────────────────
+
+/**
+ * reconcileStudentByManualPayments
+ *
+ * Resolves student from ALLOT- or APP- ID (or name fallback),
+ * deduplicates payments by transactionId, inserts missing receipts,
+ * then re-runs reconcileAllFeeReceipts for the student.
+ *
+ * payload = {
+ *   allotmentId : "ALLOT-2026-4001",
+ *   appId       : "",
+ *   studentName : "Sneha Santosh Pukale",
+ *   payments    : [
+ *     { amount: 15000, transactionId: "626578486384", mode: "UPI", feeType: "Hostel Fee", feeMonth: "", remarks: "" },
+ *     { amount:  1000, transactionId: "626578522298", mode: "UPI", feeType: "Hostel Fee", feeMonth: "", remarks: "" }
+ *   ],
+ *   collectedBy : "Admin"
+ * }
+ */
+function reconcileStudentByManualPayments(payload) {
+  try {
+    if (!payload || !payload.payments || payload.payments.length === 0) {
+      return { success: false, message: "No payments provided." };
+    }
+    var allotSheet = getSheet("ROOM_ALLOTMENTS");
+    var allotData  = allotSheet.getDataRange().getValues();
+    var resolvedAppId = "", resolvedName = "", resolvedRoom = "", resolvedRoomType = "";
+    var targetAllotId = (payload.allotmentId || "").toString().trim();
+    var targetAppId   = (payload.appId       || "").toString().trim();
+    var targetName    = (payload.studentName || "").toString().trim().toLowerCase();
+    for (var a = 1; a < allotData.length; a++) {
+      var ar = allotData[a];
+      if (!ar[0] || ar[0].toString().trim().toUpperCase() === "ALLOTMENT_ID") continue;
+      var rowAllotId = ar[0].toString().trim();
+      var rowAppId   = ar[1].toString().trim();
+      var rowName    = ar[2].toString().trim();
+      var matched = false;
+      if (targetAllotId && rowAllotId.toLowerCase() === targetAllotId.toLowerCase()) matched = true;
+      else if (targetAppId && rowAppId.toLowerCase() === targetAppId.toLowerCase()) matched = true;
+      else if (targetName && rowName.toLowerCase().indexOf(targetName) !== -1) matched = true;
+      if (matched) {
+        resolvedAppId    = rowAppId;
+        resolvedName     = rowName;
+        resolvedRoom     = ar[4].toString().trim();
+        resolvedRoomType = ar[5].toString().trim();
+        break;
+      }
+    }
+    if (!resolvedAppId) {
+      return { success: false, message: "Could not locate student. Tried allotmentId=" + targetAllotId + ", appId=" + targetAppId + ", name=" + targetName };
+    }
+    var receiptSheet   = getSheet("FEE_RECEIPTS");
+    var receiptData    = receiptSheet.getDataRange().getValues();
+    var existingTxnIds = {};
+    for (var r = 1; r < receiptData.length; r++) {
+      var txn = (receiptData[r][8] || "").toString().trim();
+      if (txn) existingTxnIds[txn.toLowerCase()] = receiptData[r][0].toString().trim();
+    }
+    var results = [], addedCount = 0, skippedCount = 0;
+    for (var p = 0; p < payload.payments.length; p++) {
+      var pmt   = payload.payments[p];
+      var txnId = (pmt.transactionId || "").toString().trim();
+      var amt   = parseFloat(pmt.amount) || 0;
+      if (amt <= 0) { results.push({ payment: pmt, status: "SKIPPED", reason: "Zero amount." }); skippedCount++; continue; }
+      if (txnId && existingTxnIds[txnId.toLowerCase()]) {
+        results.push({ payment: pmt, status: "ALREADY_EXISTS", existingReceiptId: existingTxnIds[txnId.toLowerCase()], reason: "TXN " + txnId + " already exists as receipt " + existingTxnIds[txnId.toLowerCase()] });
+        skippedCount++; continue;
+      }
+      var feeData = {
+        appId: resolvedAppId, studentName: resolvedName, roomNumber: resolvedRoom,
+        feeType: (pmt.feeType || "Hostel Fee").toString().trim(), amountPaid: amt,
+        paymentMode: (pmt.mode || "UPI").toString().trim(), transactionId: txnId,
+        feeMonth: (pmt.feeMonth || "").toString().trim(), feeYear: new Date().getFullYear(),
+        collectedBy: (payload.collectedBy || "Admin").toString().trim(),
+        remarks: (pmt.remarks || "Manual reconciliation entry").toString().trim()
+      };
+      var addRes = addFeeReceipt(feeData);
+      if (addRes.success) {
+        results.push({ payment: pmt, status: "ADDED", receiptId: addRes.receiptId });
+        if (txnId) existingTxnIds[txnId.toLowerCase()] = addRes.receiptId;
+        addedCount++;
+      } else {
+        results.push({ payment: pmt, status: "ERROR", reason: addRes.message });
+      }
+    }
+    var reconRes = reconcileAllFeeReceipts(resolvedAppId);
+    return {
+      success: true, studentName: resolvedName, appId: resolvedAppId,
+      allotmentId: targetAllotId, roomNumber: resolvedRoom,
+      addedCount: addedCount, skippedCount: skippedCount, payments: results,
+      reconciliation: reconRes,
+      message: "Processed " + payload.payments.length + " payment(s): " + addedCount + " added, " + skippedCount + " skipped/existing. " +
+               (reconRes.success ? reconRes.message : "Reconcile error: " + reconRes.message)
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * auditAllStudentFees
+ *
+ * Cross-checks FEE_RECEIPTS totals vs STUDENT_FEE_LEDGER paid totals per student.
+ * Flags: MISMATCH | NO_LEDGER | NO_RECEIPTS | OK.
+ * Also detects orphaned receipts (no linked ledger ID) and duplicate TXN IDs.
+ * targetAppId (optional) - accepts APP- or ALLOT- prefix, restricts to one student.
+ */
+function auditAllStudentFees(targetAppId) {
+  try {
+    var allotSheet = getSheet("ROOM_ALLOTMENTS");
+    var allotData  = allotSheet.getDataRange().getValues();
+    var allotByAppId = {}, appIdByAllotId = {};
+    for (var a = 1; a < allotData.length; a++) {
+      var ar = allotData[a];
+      if (!ar[0] || ar[0].toString().trim().toUpperCase() === "ALLOTMENT_ID") continue;
+      var aAllotId = ar[0].toString().trim(), aAppId = ar[1].toString().trim();
+      if (!aAppId) continue;
+      appIdByAllotId[aAllotId] = aAppId;
+      allotByAppId[aAppId] = { allotmentId: aAllotId, studentName: ar[2].toString().trim(), roomNumber: ar[4].toString().trim(), roomType: ar[5].toString().trim(), status: (ar[9]||"").toString().trim() };
+    }
+    var resolvedTarget = "";
+    if (targetAppId) {
+      var t = targetAppId.toString().trim();
+      resolvedTarget = appIdByAllotId[t] || t;
+    }
+    var receiptSheet = getSheet("FEE_RECEIPTS"), receiptData = receiptSheet.getDataRange().getValues();
+    var receiptByStudent = {}, globalTxnMap = {};
+    for (var r = 1; r < receiptData.length; r++) {
+      var row = receiptData[r];
+      if (!row[0] || row[0].toString().trim().toUpperCase() === "RECEIPT_ID") continue;
+      if ((row[13]||"Active").toString().trim().toLowerCase() === "cancelled") continue;
+      var rAppId = (row[2]||"").toString().trim(), rName = (row[3]||"").toString().trim();
+      var rAmt = parseFloat(row[6])||0, rTxnId = (row[8]||"").toString().trim();
+      var rRcptId = (row[0]||"").toString().trim(), rLdgId = (row[14]||"").toString().trim();
+      var rFeeType = (row[5]||"").toString().trim();
+      if (!rAppId && rName) { for (var ak in allotByAppId) { if (allotByAppId[ak].studentName.toLowerCase()===rName.toLowerCase()){rAppId=ak;break;} } }
+      if (!rAppId) continue;
+      if (resolvedTarget && rAppId.toLowerCase()!==resolvedTarget.toLowerCase()) continue;
+      if (!receiptByStudent[rAppId]) receiptByStudent[rAppId] = { total:0, receipts:[], studentName:rName };
+      receiptByStudent[rAppId].total += rAmt;
+      receiptByStudent[rAppId].receipts.push({ receiptId:rRcptId, amount:rAmt, txnId:rTxnId, ledgerId:rLdgId, feeType:rFeeType });
+      if (rTxnId) { if (!globalTxnMap[rTxnId]) globalTxnMap[rTxnId]=[]; globalTxnMap[rTxnId].push(rRcptId); }
+    }
+    var ledgerSheet = getSheet("STUDENT_FEE_LEDGER"), ledgerData = ledgerSheet.getDataRange().getValues();
+    var ledgerByStudent = {};
+    for (var l = 1; l < ledgerData.length; l++) {
+      var lr = ledgerData[l];
+      if (!lr[0] || lr[0].toString().trim().toUpperCase() === "LEDGER_ID") continue;
+      if ((lr[12]||"").toString().trim().toLowerCase()==="cancelled") continue;
+      var lAppId = (lr[1]||"").toString().trim();
+      if (!lAppId) continue;
+      if (resolvedTarget && lAppId.toLowerCase()!==resolvedTarget.toLowerCase()) continue;
+      if (!ledgerByStudent[lAppId]) ledgerByStudent[lAppId] = { paidTotal:0, applicableTotal:0, balance:0 };
+      ledgerByStudent[lAppId].paidTotal       += parseFloat(lr[9]) ||0;
+      ledgerByStudent[lAppId].applicableTotal += parseFloat(lr[8]) ||0;
+      ledgerByStudent[lAppId].balance         += parseFloat(lr[10])||0;
+    }
+    var auditRows = [], allAppIds = {};
+    for (var id in receiptByStudent) allAppIds[id]=true;
+    for (var id in ledgerByStudent)  allAppIds[id]=true;
+    for (var id in allotByAppId)     allAppIds[id]=true;
+    for (var appId in allAppIds) {
+      if (resolvedTarget && appId.toLowerCase()!==resolvedTarget.toLowerCase()) continue;
+      var aInfo = allotByAppId[appId]||{};
+      var rData = receiptByStudent[appId]||{ total:0, receipts:[], studentName:"" };
+      var lData = ledgerByStudent[appId] ||{ paidTotal:0, applicableTotal:0, balance:0 };
+      if (!receiptByStudent[appId]&&!ledgerByStudent[appId]&&(!aInfo.status||aInfo.status!=="Active")) continue;
+      var receiptTotal    = Math.round(rData.total         *100)/100;
+      var ledgerPaidTotal = Math.round(lData.paidTotal     *100)/100;
+      var ledgerApply     = Math.round(lData.applicableTotal*100)/100;
+      var ledgerBalance   = Math.round(lData.balance       *100)/100;
+      var delta           = Math.round((receiptTotal-ledgerPaidTotal)*100)/100;
+      var issues=[], status="OK";
+      if (!receiptByStudent[appId]&&!ledgerByStudent[appId]) { status="NO_RECEIPTS"; issues.push("No fee activity for active student."); }
+      else if (!receiptByStudent[appId]) { status="NO_RECEIPTS"; issues.push("No receipts; ledger: \u20B9"+ledgerApply.toLocaleString("en-IN")+" applicable."); }
+      else if (!ledgerByStudent[appId])  { status="NO_LEDGER";   issues.push("Receipts \u20B9"+receiptTotal.toLocaleString("en-IN")+" but no ledger entries."); }
+      else if (Math.abs(delta)>0.5) {
+        status="MISMATCH";
+        if (delta>0) issues.push("Receipt total \u20B9"+receiptTotal.toLocaleString("en-IN")+" > ledger paid \u20B9"+ledgerPaidTotal.toLocaleString("en-IN")+". Delta: \u20B9"+Math.abs(delta).toLocaleString("en-IN")+". Run Reconcile.");
+        else         issues.push("Ledger paid \u20B9"+ledgerPaidTotal.toLocaleString("en-IN")+" > receipts \u20B9"+receiptTotal.toLocaleString("en-IN")+". Delta: \u20B9"+Math.abs(delta).toLocaleString("en-IN")+". Possible duplicate settlement.");
+      }
+      var orphanedReceipts=[];
+      (rData.receipts||[]).forEach(function(rc){if(!rc.ledgerId)orphanedReceipts.push(rc.receiptId);});
+      if (orphanedReceipts.length>0){if(status==="OK")status="MISMATCH";issues.push(orphanedReceipts.length+" receipt(s) have no linked ledger ID: "+orphanedReceipts.join(", "));}
+      var studentDupTxns=[], seenTxns={};
+      (rData.receipts||[]).forEach(function(rc){if(rc.txnId){if(!seenTxns[rc.txnId])seenTxns[rc.txnId]=[];seenTxns[rc.txnId].push(rc.receiptId);}});
+      for (var txn in seenTxns){if(seenTxns[txn].length>1){studentDupTxns.push({txnId:txn,receiptIds:seenTxns[txn]});if(status==="OK")status="MISMATCH";issues.push("Duplicate TXN '"+txn+"': "+seenTxns[txn].join(", "));}}
+      auditRows.push({ appId:appId, allotmentId:aInfo.allotmentId||"", studentName:aInfo.studentName||rData.studentName||appId, roomNumber:aInfo.roomNumber||"", roomType:aInfo.roomType||"", allotStatus:aInfo.status||"", receiptTotal:receiptTotal, ledgerPaidTotal:ledgerPaidTotal, ledgerApplicableTotal:ledgerApply, ledgerBalance:ledgerBalance, delta:delta, status:status, issues:issues, orphanedReceipts:orphanedReceipts, duplicateTxns:studentDupTxns, receiptCount:rData.receipts?rData.receipts.length:0 });
+    }
+    auditRows.sort(function(a,b){ var o={MISMATCH:0,NO_LEDGER:1,NO_RECEIPTS:2,OK:3}; var oA=o[a.status]!==undefined?o[a.status]:4,oB=o[b.status]!==undefined?o[b.status]:4; if(oA!==oB)return oA-oB; return a.studentName.localeCompare(b.studentName); });
+    var dupGlobal=[];
+    for (var txn in globalTxnMap){if(globalTxnMap[txn].length>1)dupGlobal.push({txnId:txn,receiptIds:globalTxnMap[txn]});}
+    var summary={ total:auditRows.length, ok:auditRows.filter(function(r){return r.status==="OK";}).length, mismatch:auditRows.filter(function(r){return r.status==="MISMATCH";}).length, noLedger:auditRows.filter(function(r){return r.status==="NO_LEDGER";}).length, noReceipts:auditRows.filter(function(r){return r.status==="NO_RECEIPTS";}).length, totalMismatchAmount:auditRows.reduce(function(s,r){return s+(r.status!=="OK"?Math.abs(r.delta):0);},0) };
+    return { success:true, auditRows:auditRows, summary:summary, duplicateTxnsGlobal:dupGlobal };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}

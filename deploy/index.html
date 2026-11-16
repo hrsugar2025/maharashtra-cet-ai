@@ -1430,6 +1430,7 @@ if (typeof window.google.script.run === 'undefined') {
       <div class="nav-section-label">Finance</div>
       <div class="nav-item" id="nav-fee-setup" onclick="showPage('fee-setup')"><span class="material-icons-round">tune</span> Fee Setup</div>
       <div class="nav-item" id="nav-fees" onclick="showPage('fees')"><span class="material-icons-round">receipt_long</span> Fee Receipts</div>
+      <div class="nav-item" id="nav-fee-audit" onclick="showPage('fee-audit')"><span class="material-icons-round">policy</span> Fee Audit</div>
       <div class="nav-section-label">Reports</div>
       <div class="nav-item" id="nav-reports" onclick="showPage('reports')"><span class="material-icons-round">bar_chart</span> Reports</div>
       <div class="nav-section-label">Admin</div>
@@ -1987,6 +1988,192 @@ if (typeof window.google.script.run === 'undefined') {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- FEE AUDIT & RECONCILIATION -->
+      <div id="page-fee-audit" class="hidden">
+        <style>
+          .audit-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:28px}
+          .audit-stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;display:flex;align-items:flex-start;gap:12px;box-shadow:var(--shadow)}
+          .audit-row-ok     td:first-child{border-left:3px solid var(--success)}
+          .audit-row-mismatch td:first-child{border-left:3px solid var(--danger)}
+          .audit-row-no-ledger td:first-child{border-left:3px solid var(--warning)}
+          .audit-row-no-receipts td:first-child{border-left:3px solid var(--text3)}
+          .issue-pill{display:inline-block;background:rgba(239,68,68,0.08);color:var(--danger);border-radius:6px;font-size:0.72rem;padding:3px 8px;margin:2px;border:1px solid rgba(239,68,68,0.15)}
+          .recon-panel{background:linear-gradient(135deg,rgba(79,70,229,0.04),rgba(236,72,153,0.04));border:1px solid rgba(79,70,229,0.15);border-radius:var(--radius);padding:24px;margin-bottom:28px}
+          .payment-row{display:grid;grid-template-columns:120px 1fr 1fr 1fr auto;gap:10px;align-items:center;margin-bottom:10px}
+          .delta-positive{color:var(--danger);font-weight:700}
+          .delta-zero{color:var(--success);font-weight:700}
+          .delta-negative{color:var(--warning);font-weight:700}
+        </style>
+
+        <!-- Quick Reconcile Panel -->
+        <div class="recon-panel">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;">
+              <span class="material-icons-round" style="color:white;font-size:20px">add_card</span>
+            </div>
+            <div>
+              <div style="font-size:1rem;font-weight:700">Quick Reconcile — Add Missing Payments</div>
+              <div style="font-size:0.78rem;color:var(--text2);margin-top:2px">Enter student allotment/app ID and payment details to add missing receipts and auto-reconcile the ledger</div>
+            </div>
+          </div>
+
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Allotment ID / App ID</label>
+              <input class="form-input" id="qr-allot-id" placeholder="e.g. ALLOT-2026-4001" value="ALLOT-2026-4001"/>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Student Name (optional fallback)</label>
+              <input class="form-input" id="qr-student-name" placeholder="e.g. Sneha Santosh Pukale" value="Sneha Santosh Pukale"/>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Fee Type</label>
+              <select class="form-select" id="qr-fee-type">
+                <option value="Hostel Fee">Hostel Fee</option>
+                <option value="Accommodation Charges">Accommodation Charges</option>
+                <option value="Mess Charges">Mess Charges</option>
+                <option value="Security Deposit">Security Deposit</option>
+                <option value="Registration Fee">Registration Fee</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Collected By</label>
+              <input class="form-input" id="qr-collected-by" placeholder="Admin / Name"/>
+            </div>
+          </div>
+
+          <!-- Payment rows -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Payment Entries</div>
+            <div id="qr-payments-container">
+              <div class="payment-row" id="qr-row-0">
+                <div><label class="form-label" style="margin-bottom:4px">Amount (₹)</label><input class="form-input" id="qr-amt-0" placeholder="15000" value="15000" type="number" min="0"/></div>
+                <div><label class="form-label" style="margin-bottom:4px">Transaction / UPI Ref</label><input class="form-input" id="qr-txn-0" placeholder="626578486384" value="626578486384"/></div>
+                <div><label class="form-label" style="margin-bottom:4px">Mode</label><select class="form-select" id="qr-mode-0"><option>UPI</option><option>NEFT</option><option>IMPS</option><option>Cash</option><option>Cheque</option></select></div>
+                <div><label class="form-label" style="margin-bottom:4px">Fee Month</label><input class="form-input" id="qr-month-0" placeholder="June 2026 (optional)"/></div>
+                <div style="margin-top:22px"><button class="btn btn-ghost btn-sm btn-icon" onclick="removeQrRow(0)" title="Remove"><span class="material-icons-round" style="font-size:16px;color:var(--danger)">close</span></button></div>
+              </div>
+              <div class="payment-row" id="qr-row-1">
+                <div><label class="form-label" style="margin-bottom:4px">Amount (₹)</label><input class="form-input" id="qr-amt-1" placeholder="1000" value="1000" type="number" min="0"/></div>
+                <div><label class="form-label" style="margin-bottom:4px">Transaction / UPI Ref</label><input class="form-input" id="qr-txn-1" placeholder="626578522298" value="626578522298"/></div>
+                <div><label class="form-label" style="margin-bottom:4px">Mode</label><select class="form-select" id="qr-mode-1"><option>UPI</option><option>NEFT</option><option>IMPS</option><option>Cash</option><option>Cheque</option></select></div>
+                <div><label class="form-label" style="margin-bottom:4px">Fee Month</label><input class="form-input" id="qr-month-1" placeholder="June 2026 (optional)"/></div>
+                <div style="margin-top:22px"><button class="btn btn-ghost btn-sm btn-icon" onclick="removeQrRow(1)" title="Remove"><span class="material-icons-round" style="font-size:16px;color:var(--danger)">close</span></button></div>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="addQrRow()" style="margin-top:4px"><span class="material-icons-round" style="font-size:16px">add</span> Add Payment</button>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="qr-submit-btn" onclick="doQuickReconcile()">
+              <span class="material-icons-round" style="font-size:18px">sync</span> Add Receipts & Reconcile
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="clearQrForm()">Clear Form</button>
+            <span style="font-size:0.78rem;color:var(--text2);margin-left:4px">Duplicate transaction IDs are automatically skipped.</span>
+          </div>
+
+          <!-- Result box -->
+          <div id="qr-result-box" class="hidden" style="margin-top:18px;padding:16px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg2)"></div>
+        </div>
+
+        <!-- Audit Stats -->
+        <div class="audit-stat-grid" id="audit-stats-row">
+          <div class="audit-stat-card">
+            <div class="stat-icon purple"><span class="material-icons-round">groups</span></div>
+            <div><div class="stat-value" id="audit-stat-total">—</div><div class="stat-label">Students Audited</div></div>
+          </div>
+          <div class="audit-stat-card">
+            <div class="stat-icon green"><span class="material-icons-round">check_circle</span></div>
+            <div><div class="stat-value" id="audit-stat-ok" style="color:var(--success)">—</div><div class="stat-label">Records OK</div></div>
+          </div>
+          <div class="audit-stat-card">
+            <div class="stat-icon red"><span class="material-icons-round">warning</span></div>
+            <div><div class="stat-value" id="audit-stat-mismatch" style="color:var(--danger)">—</div><div class="stat-label">Mismatches</div></div>
+          </div>
+          <div class="audit-stat-card">
+            <div class="stat-icon amber"><span class="material-icons-round">receipt</span></div>
+            <div><div class="stat-value" id="audit-stat-no-ledger" style="color:var(--warning)">—</div><div class="stat-label">No Ledger</div></div>
+          </div>
+          <div class="audit-stat-card">
+            <div class="stat-icon blue"><span class="material-icons-round">money_off</span></div>
+            <div><div class="stat-value" id="audit-stat-no-receipts" style="color:var(--info)">—</div><div class="stat-label">No Receipts</div></div>
+          </div>
+          <div class="audit-stat-card">
+            <div class="stat-icon red"><span class="material-icons-round">error_outline</span></div>
+            <div><div class="stat-value" id="audit-stat-delta" style="color:var(--danger);font-size:1.1rem">—</div><div class="stat-label">Total Discrepancy</div></div>
+          </div>
+        </div>
+
+        <!-- Audit Controls -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header" style="margin-bottom:16px">
+            <div>
+              <div class="card-title">Fee Audit Report — All Students</div>
+              <div class="card-sub">Compares FEE_RECEIPTS totals with STUDENT_FEE_LEDGER paid amounts</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="loadFeeAudit()">
+                <span class="material-icons-round" style="font-size:16px">refresh</span> Run Full Audit
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="doReconcileAllFromAudit()">
+                <span class="material-icons-round" style="font-size:16px">sync</span> Reconcile All Students
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="exportAuditCsv()">
+                <span class="material-icons-round" style="font-size:16px">download</span> Export CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter bar -->
+          <div class="filter-bar" style="margin-bottom:16px">
+            <div class="search-input-wrap">
+              <span class="material-icons-round">search</span>
+              <input class="form-input" id="audit-search" placeholder="Search student name..." oninput="renderAuditTable()"/>
+            </div>
+            <select class="form-select" id="audit-status-filter" onchange="renderAuditTable()" style="max-width:180px">
+              <option value="">All Statuses</option>
+              <option value="MISMATCH">Mismatch</option>
+              <option value="NO_LEDGER">No Ledger</option>
+              <option value="NO_RECEIPTS">No Receipts</option>
+              <option value="OK">OK</option>
+            </select>
+          </div>
+
+          <!-- Audit Table -->
+          <div class="table-container">
+            <table id="audit-table">
+              <thead>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Allotment ID</th>
+                  <th>Room</th>
+                  <th style="text-align:right">Receipts (₹)</th>
+                  <th style="text-align:right">Ledger Paid (₹)</th>
+                  <th style="text-align:right">Applicable (₹)</th>
+                  <th style="text-align:right">Balance (₹)</th>
+                  <th style="text-align:right">Delta (₹)</th>
+                  <th>Status</th>
+                  <th>Issues</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="audit-table-body">
+                <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text2)"><span class="material-icons-round" style="font-size:36px;display:block;margin-bottom:8px;color:var(--text3)">policy</span>Click "Run Full Audit" to load the report</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Duplicate Transaction Panel -->
+        <div class="card hidden" id="audit-dup-panel">
+          <div class="card-header">
+            <div class="card-title" style="color:var(--danger)"><span class="material-icons-round" style="vertical-align:middle;margin-right:6px;font-size:20px">content_copy</span>Duplicate Transaction IDs Detected</div>
+          </div>
+          <div id="audit-dup-body"></div>
         </div>
       </div>
 
@@ -8590,7 +8777,7 @@ function showPage(page){
   _activePage = page;
   var currentToken = ++_pageNavToken;
 
-  ['dashboard','applications','allotment','service-requests','fee-setup','fees','reports','settings','user-manual'].forEach(function(p){
+  ['dashboard','applications','allotment','service-requests','fee-setup','fees','fee-audit','reports','settings','user-manual'].forEach(function(p){
     var el = document.getElementById('page-'+p);
     if (el) el.classList.add('hidden');
     var n=document.getElementById('nav-'+p);if(n)n.classList.remove('active');
@@ -8605,6 +8792,7 @@ function showPage(page){
     'service-requests':['Service Requests & Rector Compliance','Review student requests, take action, and record compliance'],
     'fee-setup':['Fee Setup','Define fee structures and heads'],
     fees:['Fee Receipts','Collect fees and view ledger'],
+    'fee-audit':['Fee Audit & Reconciliation','Detect and fix receipt vs ledger mismatches across all students'],
     reports:['Reports','Occupancy, finance, student data'],
     settings:['Admin Settings','Configure organization profile and manage hostel rooms'],
     'user-manual':['User Manual','Step-by-step guide to operating the software']
@@ -8655,6 +8843,8 @@ function showPage(page){
       renderPendingFees();
     }
     loadFeesBundleData(currentToken, Boolean(allFees && allFees.length > 0));
+  } else if(page==='fee-audit'){
+    loadFeeAudit();
   } else if(page==='reports'){
     loadOccupancyReport();
   } else if(page==='settings'){
@@ -10744,7 +10934,309 @@ function doReconcileCurrentStudentReceipts() {
     showToast('Error: ' + err.message, 'error');
   }).reconcileAllFeeReceipts(_currentSfdAppId);
 }
+
+// ── FEE AUDIT & RECONCILIATION JS ───────────────────────────────────────────
+
+var _auditData = null;   // cached full audit result
+var _qrRowCount = 2;     // tracks dynamic payment rows
+
+function loadFeeAudit() {
+  var tbody = document.getElementById('audit-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text2)"><span class="material-icons-round" style="font-size:32px;animation:spin 1s linear infinite;display:block;margin-bottom:8px;color:var(--primary)">sync</span>Running audit…</td></tr>';
+  ['audit-stat-total','audit-stat-ok','audit-stat-mismatch','audit-stat-no-ledger','audit-stat-no-receipts','audit-stat-delta'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.textContent = '…';
+  });
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res.success) { showToast('Audit error: ' + res.message, 'error'); return; }
+      _auditData = res;
+      renderAuditStats(res.summary);
+      renderAuditTable();
+      renderAuditDuplicates(res.duplicateTxnsGlobal);
+      showToast('✅ Audit complete — ' + res.summary.total + ' students scanned', 'success');
+    })
+    .withFailureHandler(function(err) {
+      showToast('Audit failed: ' + err.message, 'error');
+      var tb = document.getElementById('audit-table-body');
+      if(tb) tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--danger)">Audit failed: ' + err.message + '</td></tr>';
+    })
+    .auditAllStudentFees();
+}
+
+function renderAuditStats(summary) {
+  if (!summary) return;
+  document.getElementById('audit-stat-total').textContent     = summary.total;
+  document.getElementById('audit-stat-ok').textContent        = summary.ok;
+  document.getElementById('audit-stat-mismatch').textContent  = summary.mismatch;
+  document.getElementById('audit-stat-no-ledger').textContent = summary.noLedger;
+  document.getElementById('audit-stat-no-receipts').textContent = summary.noReceipts;
+  document.getElementById('audit-stat-delta').textContent     = summary.totalMismatchAmount > 0
+    ? '₹' + parseFloat(summary.totalMismatchAmount).toLocaleString('en-IN', {maximumFractionDigits:0})
+    : '₹0';
+}
+
+function renderAuditTable() {
+  var tbody = document.getElementById('audit-table-body');
+  if (!tbody || !_auditData) return;
+
+  var search    = (document.getElementById('audit-search')        || {}).value || '';
+  var statusF   = (document.getElementById('audit-status-filter') || {}).value || '';
+  var rows      = _auditData.auditRows || [];
+  var filtered  = rows.filter(function(r) {
+    var nameMatch   = !search   || r.studentName.toLowerCase().indexOf(search.toLowerCase()) !== -1;
+    var statusMatch = !statusF  || r.status === statusF;
+    return nameMatch && statusMatch;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text2)">No records match your filter.</td></tr>';
+    return;
+  }
+
+  var statusBadgeMap = {
+    'OK':          '<span class="badge badge-paid">✅ OK</span>',
+    'MISMATCH':    '<span class="badge badge-rejected">⚠️ Mismatch</span>',
+    'NO_LEDGER':   '<span class="badge badge-partial">🔶 No Ledger</span>',
+    'NO_RECEIPTS': '<span class="badge badge-vacated">⬜ No Receipts</span>'
+  };
+  var rowClassMap = {
+    'OK':          'audit-row-ok',
+    'MISMATCH':    'audit-row-mismatch',
+    'NO_LEDGER':   'audit-row-no-ledger',
+    'NO_RECEIPTS': 'audit-row-no-receipts'
+  };
+
+  tbody.innerHTML = filtered.map(function(r) {
+    var deltaClass = r.delta === 0 ? 'delta-zero' : (r.delta > 0 ? 'delta-positive' : 'delta-negative');
+    var deltaSign  = r.delta > 0 ? '+' : '';
+    var issuesHtml = (r.issues || []).map(function(i){ return '<div class="issue-pill">' + i + '</div>'; }).join('');
+    var rowCls = rowClassMap[r.status] || '';
+    return '<tr class="' + rowCls + '">' +
+      '<td><div style="font-weight:600">' + r.studentName + '</div><div style="font-size:0.72rem;color:var(--text2);">' + r.appId + '</div></td>' +
+      '<td style="font-size:0.8rem;color:var(--text2)">' + (r.allotmentId||'—') + '</td>' +
+      '<td style="font-size:0.82rem">' + (r.roomNumber||'—') + '</td>' +
+      '<td style="text-align:right;font-weight:600">₹' + r.receiptTotal.toLocaleString('en-IN') + '<div style="font-size:0.7rem;color:var(--text2)">' + r.receiptCount + ' receipt(s)</div></td>' +
+      '<td style="text-align:right;font-weight:600">₹' + r.ledgerPaidTotal.toLocaleString('en-IN') + '</td>' +
+      '<td style="text-align:right">₹' + r.ledgerApplicableTotal.toLocaleString('en-IN') + '</td>' +
+      '<td style="text-align:right;color:' + (r.ledgerBalance > 0 ? 'var(--danger)' : 'var(--success)') + ';font-weight:600">₹' + r.ledgerBalance.toLocaleString('en-IN') + '</td>' +
+      '<td style="text-align:right"><span class="' + deltaClass + '">' + deltaSign + '₹' + Math.abs(r.delta).toLocaleString('en-IN') + '</span></td>' +
+      '<td>' + (statusBadgeMap[r.status] || r.status) + '</td>' +
+      '<td style="max-width:260px">' + (issuesHtml || '<span style="color:var(--success);font-size:0.78rem">No issues</span>') + '</td>' +
+      '<td><button class="btn btn-primary btn-sm" onclick="doAuditRowReconcile(\'' + r.appId + '\',\'' + r.studentName.replace(/'/g,"\\'")+'\')"><span class="material-icons-round" style="font-size:14px">sync</span> Reconcile</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function doAuditRowReconcile(appId, studentName) {
+  showToast('Reconciling ' + studentName + '…', 'info');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res.success) {
+        showToast('✅ ' + res.message, 'success');
+        loadFeeAudit();
+      } else {
+        showToast('Error: ' + res.message, 'error');
+      }
+    })
+    .withFailureHandler(function(err) { showToast('Error: ' + err.message, 'error'); })
+    .reconcileAllFeeReceipts(appId);
+}
+
+function renderAuditDuplicates(dups) {
+  var panel = document.getElementById('audit-dup-panel');
+  var body  = document.getElementById('audit-dup-body');
+  if (!panel || !body) return;
+  if (!dups || dups.length === 0) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  body.innerHTML = '<div class="table-container"><table><thead><tr><th>Transaction ID</th><th>Receipt IDs with this TXN</th><th>Count</th></tr></thead><tbody>' +
+    dups.map(function(d){
+      return '<tr><td style="font-weight:700;color:var(--danger)">' + d.txnId + '</td>' +
+             '<td style="font-size:0.8rem">' + (d.receiptIds||[]).join(', ') + '</td>' +
+             '<td><span class="badge badge-rejected">' + (d.receiptIds||[]).length + 'x</span></td></tr>';
+    }).join('') +
+  '</tbody></table></div>';
+}
+
+function doQuickReconcile() {
+  var allotId     = (document.getElementById('qr-allot-id')      || {}).value || '';
+  var studentName = (document.getElementById('qr-student-name')  || {}).value || '';
+  var feeType     = (document.getElementById('qr-fee-type')       || {}).value || 'Hostel Fee';
+  var collectedBy = (document.getElementById('qr-collected-by')   || {}).value || 'Admin';
+
+  if (!allotId && !studentName) {
+    showToast('Please enter an Allotment ID or Student Name', 'error'); return;
+  }
+
+  // Collect payment rows
+  var payments = [];
+  var container = document.getElementById('qr-payments-container');
+  if (!container) return;
+  var rows = container.querySelectorAll('.payment-row');
+  rows.forEach(function(row) {
+    var idx    = row.id.replace('qr-row-', '');
+    var amt    = parseFloat((document.getElementById('qr-amt-'   + idx) || {}).value) || 0;
+    var txnId  = ((document.getElementById('qr-txn-'  + idx) || {}).value || '').trim();
+    var mode   = ((document.getElementById('qr-mode-' + idx) || {}).value || 'UPI');
+    var month  = ((document.getElementById('qr-month-'+ idx) || {}).value || '').trim();
+    if (amt > 0) {
+      payments.push({ amount: amt, transactionId: txnId, mode: mode, feeType: feeType, feeMonth: month, remarks: 'Manual reconciliation — ' + allotId });
+    }
+  });
+
+  if (payments.length === 0) {
+    showToast('No valid payment amounts entered', 'error'); return;
+  }
+
+  var total = payments.reduce(function(s, p){ return s + p.amount; }, 0);
+  setBtnLoading('qr-submit-btn', true);
+  showToast('Processing ' + payments.length + ' payment(s) for ' + (studentName||allotId) + '…', 'info');
+
+  var payload = {
+    allotmentId : allotId,
+    studentName : studentName,
+    payments    : payments,
+    collectedBy : collectedBy
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setBtnLoading('qr-submit-btn', false);
+      var box = document.getElementById('qr-result-box');
+      if (!box) return;
+      box.classList.remove('hidden');
+
+      if (res.success) {
+        var rows = (res.payments || []).map(function(p) {
+          var statusIcon = p.status === 'ADDED' ? '✅' : (p.status === 'ALREADY_EXISTS' ? '⏭️' : '❌');
+          return '<tr><td>₹' + parseFloat(p.payment.amount||0).toLocaleString('en-IN') + '</td>' +
+                 '<td style="font-family:monospace">' + (p.payment.transactionId||'—') + '</td>' +
+                 '<td>' + statusIcon + ' ' + p.status + '</td>' +
+                 '<td style="font-size:0.78rem;color:var(--text2)">' + (p.receiptId||p.existingReceiptId||p.reason||'') + '</td></tr>';
+        }).join('');
+
+        box.style.borderColor = 'var(--success)';
+        box.innerHTML =
+          '<div style="font-weight:700;color:var(--success);margin-bottom:10px">✅ ' + res.message + '</div>' +
+          '<div style="font-size:0.82rem;color:var(--text2);margin-bottom:12px">Student: <strong>' + res.studentName + '</strong> | App ID: <code>' + res.appId + '</code> | Room: ' + res.roomNumber + '</div>' +
+          '<table style="width:100%;font-size:0.82rem"><thead><tr><th>Amount</th><th>TXN ID</th><th>Status</th><th>Receipt / Note</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+          '<button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="loadFeeAudit();document.getElementById(\'audit-status-filter\').value=\'MISMATCH\'"><span class="material-icons-round" style="font-size:14px">policy</span> Re-run Audit</button>';
+        showToast('✅ ' + res.message, 'success');
+        loadFees();
+        loadPendingFees();
+      } else {
+        box.style.borderColor = 'var(--danger)';
+        box.innerHTML = '<div style="color:var(--danger);font-weight:600">❌ ' + res.message + '</div>';
+        showToast('Error: ' + res.message, 'error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      setBtnLoading('qr-submit-btn', false);
+      showToast('Error: ' + err.message, 'error');
+    })
+    .reconcileStudentByManualPayments(payload);
+}
+
+var _qrNextIdx = 2;
+function addQrRow() {
+  var idx       = _qrNextIdx++;
+  var container = document.getElementById('qr-payments-container');
+  if (!container) return;
+  var div = document.createElement('div');
+  div.className = 'payment-row';
+  div.id        = 'qr-row-' + idx;
+  div.innerHTML =
+    '<div><label class="form-label" style="margin-bottom:4px">Amount (₹)</label><input class="form-input" id="qr-amt-' + idx + '" placeholder="Amount" type="number" min="0"/></div>' +
+    '<div><label class="form-label" style="margin-bottom:4px">Transaction / UPI Ref</label><input class="form-input" id="qr-txn-' + idx + '" placeholder="Transaction ID"/></div>' +
+    '<div><label class="form-label" style="margin-bottom:4px">Mode</label><select class="form-select" id="qr-mode-' + idx + '"><option>UPI</option><option>NEFT</option><option>IMPS</option><option>Cash</option><option>Cheque</option></select></div>' +
+    '<div><label class="form-label" style="margin-bottom:4px">Fee Month</label><input class="form-input" id="qr-month-' + idx + '" placeholder="June 2026 (optional)"/></div>' +
+    '<div style="margin-top:22px"><button class="btn btn-ghost btn-sm btn-icon" onclick="removeQrRow(' + idx + ')" title="Remove"><span class="material-icons-round" style="font-size:16px;color:var(--danger)">close</span></button></div>';
+  container.appendChild(div);
+}
+
+function removeQrRow(idx) {
+  var row = document.getElementById('qr-row-' + idx);
+  if (row) row.remove();
+}
+
+function clearQrForm() {
+  ['qr-allot-id','qr-student-name','qr-collected-by'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value='';
+  });
+  var container = document.getElementById('qr-payments-container');
+  if (container) container.innerHTML = '';
+  _qrNextIdx = 0;
+  addQrRow();
+  var box = document.getElementById('qr-result-box');
+  if (box) { box.classList.add('hidden'); box.innerHTML=''; }
+}
+
+function doReconcileAllFromAudit() {
+  showConfirm({
+    title   : 'Reconcile ALL Students?',
+    msg     : 'This will re-settle all fee receipts against all student ledger dues system-wide. This may take a minute.',
+    icon    : 'sync',
+    iconColor: 'primary',
+    okLabel : 'Yes, Reconcile All',
+    okClass : 'btn-primary',
+    hasInput: false,
+    onConfirm: function() {
+      showToast('Reconciling all students…', 'info');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) {
+            showToast('✅ ' + res.message, 'success');
+            loadFeeAudit();
+            loadPendingFees();
+            loadFees();
+          } else {
+            showToast('Error: ' + res.message, 'error');
+          }
+        })
+        .withFailureHandler(function(err) { showToast('Error: ' + err.message, 'error'); })
+        .reconcileAllFeeReceipts();
+    }
+  });
+}
+
+function exportAuditCsv() {
+  if (!_auditData || !_auditData.auditRows || _auditData.auditRows.length === 0) {
+    showToast('Run the audit first before exporting.', 'error'); return;
+  }
+  var rows = _auditData.auditRows;
+  var header = ['Student Name','App ID','Allotment ID','Room','Room Type','Status','Receipt Total','Ledger Paid','Applicable Total','Balance','Delta','Issues','Receipt Count'];
+  var csv = header.join(',') + '\n';
+  csv += rows.map(function(r) {
+    return [
+      '"' + r.studentName.replace(/"/g,'""') + '"',
+      '"' + r.appId + '"',
+      '"' + (r.allotmentId||'') + '"',
+      '"' + (r.roomNumber||'') + '"',
+      '"' + (r.roomType||'') + '"',
+      '"' + r.status + '"',
+      r.receiptTotal,
+      r.ledgerPaidTotal,
+      r.ledgerApplicableTotal,
+      r.ledgerBalance,
+      r.delta,
+      '"' + (r.issues||[]).join('; ').replace(/"/g,'""') + '"',
+      r.receiptCount
+    ].join(',');
+  }).join('\n');
+
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href   = url;
+  a.download = 'FeeAudit_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Audit exported to CSV', 'success');
+}
+
 function openCollectFromSFD(ledgerId){
+
   // Find entry in the current SFD entries
   var entry=_sfdEntries.find(function(e){return e.ledgerId===ledgerId;});
   if(!entry)return;
