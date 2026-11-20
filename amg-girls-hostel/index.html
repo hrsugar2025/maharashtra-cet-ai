@@ -2228,6 +2228,39 @@ function doLogin(){
           </div>
         </div>
 
+        <!-- HEAD-WISE OUTSTANDING FEE RECONCILIATION -->
+        <div class="card" style="margin-bottom:24px" id="headwise-outstanding-card">
+          <div class="card-header" style="margin-bottom:16px">
+            <div>
+              <div class="card-title"><span class="material-icons-round" style="vertical-align:middle;margin-right:6px;font-size:20px;color:var(--warning)">account_balance_wallet</span>Head-wise Outstanding Fee Reconciliation</div>
+              <div class="card-sub">View total applicable, collected and outstanding fee amount per fee head across all students. Run Reconcile first to ensure accurate figures.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select class="form-select" id="hw-year-filter" style="max-width:150px">
+                <option value="All">All Years</option>
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="loadHeadWiseOutstanding()">
+                <span class="material-icons-round" style="font-size:16px">account_balance_wallet</span> Load Head-wise Report
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="exportHeadWiseCsv()">
+                <span class="material-icons-round" style="font-size:16px">download</span> Export CSV
+              </button>
+            </div>
+          </div>
+          <div id="hw-stats-row" class="hidden" style="display:none;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+            <div class="audit-stat-card"><div class="stat-icon purple"><span class="material-icons-round">category</span></div><div><div class="stat-value" id="hw-stat-heads">—</div><div class="stat-label">Fee Heads</div></div></div>
+            <div class="audit-stat-card"><div class="stat-icon green"><span class="material-icons-round">payments</span></div><div><div class="stat-value" id="hw-stat-collected" style="color:var(--success)">—</div><div class="stat-label">Total Collected (₹)</div></div></div>
+            <div class="audit-stat-card"><div class="stat-icon red"><span class="material-icons-round">money_off</span></div><div><div class="stat-value" id="hw-stat-outstanding" style="color:var(--danger)">—</div><div class="stat-label">Total Outstanding (₹)</div></div></div>
+          </div>
+          <div class="table-container">
+            <table id="hw-table">
+              <thead><tr><th>#</th><th>Fee Head / Type</th><th style="text-align:right">Students</th><th style="text-align:right">Total Applicable (₹)</th><th style="text-align:right">Total Collected (₹)</th><th style="text-align:right">Outstanding (₹)</th><th style="text-align:right">Collection %</th><th>Details</th></tr></thead>
+              <tbody id="hw-table-body"><tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text2)"><span class="material-icons-round" style="font-size:36px;display:block;margin-bottom:8px;color:var(--text3)">account_balance_wallet</span>Click "Load Head-wise Report" to view outstanding fees by fee head</td></tr></tbody>
+              <tfoot id="hw-table-foot" class="hidden" style="display:none"><tr style="font-weight:700;background:var(--bg2)"><td colspan="3">Grand Total</td><td style="text-align:right" id="hw-foot-applicable">—</td><td style="text-align:right" id="hw-foot-collected">—</td><td style="text-align:right;color:var(--danger)" id="hw-foot-outstanding">—</td><td id="hw-foot-pct">—</td><td></td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
         <!-- Duplicate Transaction Panel -->
         <div class="card hidden" id="audit-dup-panel">
           <div class="card-header">
@@ -7803,10 +7836,60 @@ window.google = {
               var allRowsToSettle = newLedgerRows.concat(customLedgerRows);
               receipts.sort(function(a,b) { return (a.receipt_date || '').localeCompare(b.receipt_date || ''); });
 
+              function parseReceiptFeeTypeItems(feeType) {
+                if (!feeType) return [];
+                var items = [];
+                var re = /(?:^|,\s*)(.*?)(?:\s*\(\s*[₹Rs.]*\s*([\d.]+)\s*\))(?=,|$)/gi;
+                var match;
+                var foundAny = false;
+                while ((match = re.exec(feeType)) !== null) {
+                  foundAny = true;
+                  items.push({ head: match[1].trim(), amount: parseFloat(match[2]) });
+                }
+                if (!foundAny) {
+                  return [{ head: feeType.trim(), amount: null }];
+                }
+                return items;
+              }
+
+              function isHeadMatchForSettlement(hName, fType) {
+                hName = (hName || '').toLowerCase();
+                fType = (fType || '').toLowerCase();
+                return (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 ||
+                  (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) ||
+                  (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) ||
+                  (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) ||
+                  (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1) ||
+                  ((fType.indexOf('brochure') !== -1 || fType.indexOf('application form') !== -1) && (hName.indexOf('brochure') !== -1 || hName.indexOf('application form') !== -1)));
+              }
+
               receipts.forEach(function(rcpt) {
                 var remaining = parseFloat(rcpt.amount_paid) || 0;
                 var fType = (rcpt.fee_type || '').toLowerCase();
                 var fMonth = (rcpt.fee_month || '').toLowerCase();
+
+                // Pass 0: Itemized heads with specified amounts (from multi-head consolidated receipts)
+                var items = parseReceiptFeeTypeItems(rcpt.fee_type);
+                var hasItemizedAmounts = items.some(function(it) { return it.amount !== null && it.amount > 0; });
+                if (hasItemizedAmounts) {
+                  items.forEach(function(it) {
+                    var itAmt = it.amount || 0;
+                    if (itAmt <= 0 || remaining <= 0) return;
+                    for (var i = 0; i < allRowsToSettle.length && itAmt > 0 && remaining > 0; i++) {
+                      var row = allRowsToSettle[i];
+                      var bal = parseFloat(row.balance) || 0;
+                      if (bal <= 0) continue;
+                      if (isHeadMatchForSettlement(row.head_name, it.head)) {
+                        var settle = Math.min(itAmt, bal, remaining);
+                        row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
+                        row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
+                        row.status = row.balance <= 0 ? 'Paid' : 'Partial';
+                        itAmt -= settle;
+                        remaining -= settle;
+                      }
+                    }
+                  });
+                }
 
                 // Pass 1: exact head + month
                 for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
@@ -7816,8 +7899,8 @@ window.google = {
                   var hName = (row.head_name || '').toLowerCase();
                   var hMonth = (row.applicable_month || '').toLowerCase();
 
-                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) || (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1) || ((fType.indexOf('brochure') !== -1 || fType.indexOf('application form') !== -1) && (hName.indexOf('brochure') !== -1 || hName.indexOf('application form') !== -1)));
-                  var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
+                  var headMatch = isHeadMatchForSettlement(hName, fType);
+                  var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || fMonth === 'consolidated' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
 
                   if (headMatch && monthMatch) {
                     var settle = Math.min(remaining, bal);
@@ -7834,7 +7917,7 @@ window.google = {
                   var bal = parseFloat(row.balance) || 0;
                   if (bal <= 0) continue;
                   var hName = (row.head_name || '').toLowerCase();
-                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1));
+                  var headMatch = isHeadMatchForSettlement(hName, fType);
                   if (headMatch) {
                     var settle = Math.min(remaining, bal);
                     row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
@@ -7844,11 +7927,14 @@ window.google = {
                   }
                 }
 
-                // Pass 3: generic fallback
+                // Pass 3: generic fallback (never settle security deposit unless receipt was specifically for deposit/all)
+                var allowDepositFallback = (fType.indexOf('deposit') !== -1 || fType.indexOf('security') !== -1 || fType === 'all' || fType === 'hostel fee payment');
                 for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
                   var row = allRowsToSettle[i];
                   var bal = parseFloat(row.balance) || 0;
                   if (bal <= 0) continue;
+                  var isDepositRow = (row.head_name || '').toLowerCase().indexOf('security') !== -1 || (row.head_name || '').toLowerCase().indexOf('deposit') !== -1;
+                  if (isDepositRow && !allowDepositFallback) continue;
                   var settle = Math.min(remaining, bal);
                   row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
                   row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
@@ -8909,6 +8995,7 @@ function showPage(page){
     loadFeesBundleData(currentToken, Boolean(allFees && allFees.length > 0));
   } else if(page==='fee-audit'){
     loadFeeAudit();
+    populateHwYearFilter();
   } else if(page==='reports'){
     loadOccupancyReport();
   } else if(page==='settings'){
@@ -11310,6 +11397,133 @@ function exportAuditCsv() {
   showToast('Audit exported to CSV', 'success');
 }
 
+// ── HEAD-WISE OUTSTANDING FEE RECONCILIATION ─────────────────────────────────
+var _hwData = null;
+
+function populateHwYearFilter() {
+  var sel = document.getElementById('hw-year-filter');
+  if (!sel) return;
+  var years = {};
+  (allFees || []).forEach(function(f) { if (f.academicYear) years[f.academicYear] = true; });
+  if (activeAcademicYear) years[activeAcademicYear] = true;
+  var opts = '<option value="All">All Years</option>';
+  Object.keys(years).sort().forEach(function(y) {
+    opts += '<option value="' + escapeHtml(y) + '"' + (y === activeAcademicYear ? ' selected' : '') + '>' + escapeHtml(y) + '</option>';
+  });
+  sel.innerHTML = opts;
+}
+
+function loadHeadWiseOutstanding() {
+  var year = (document.getElementById('hw-year-filter') || {}).value || 'All';
+  var tbody = document.getElementById('hw-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text2)"><span class="material-icons-round" style="font-size:28px;animation:spin 1s linear infinite;display:block;margin-bottom:8px;color:var(--primary)">sync</span>Loading head-wise outstanding…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res.success) { showToast('Error: ' + res.message, 'error'); return; }
+      _hwData = res;
+      renderHeadWiseTable(res);
+      showToast('✅ Head-wise outstanding loaded — ' + res.rows.length + ' fee heads', 'success');
+    })
+    .withFailureHandler(function(err) {
+      showToast('Failed: ' + err.message, 'error');
+      var tb = document.getElementById('hw-table-body');
+      if (tb) tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--danger)">Error: ' + escapeHtml(err.message) + '</td></tr>';
+    })
+    .getHeadWiseOutstanding(year);
+}
+
+function renderHeadWiseTable(res) {
+  var tbody = document.getElementById('hw-table-body');
+  var tfoot = document.getElementById('hw-table-foot');
+  var statsRow = document.getElementById('hw-stats-row');
+  if (!tbody) return;
+  if (!res.rows || res.rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text2)">No fee ledger data found.</td></tr>';
+    return;
+  }
+  if (statsRow) { statsRow.style.display = 'grid'; statsRow.classList.remove('hidden'); }
+  var hwHeads = document.getElementById('hw-stat-heads');
+  var hwCollected = document.getElementById('hw-stat-collected');
+  var hwOutstanding = document.getElementById('hw-stat-outstanding');
+  if (hwHeads) hwHeads.textContent = res.rows.length;
+  if (hwCollected) hwCollected.textContent = fmtMoney(res.grandTotalPaid);
+  if (hwOutstanding) hwOutstanding.textContent = fmtMoney(res.grandTotalOutstanding);
+  if (tfoot) {
+    tfoot.style.display = '';
+    tfoot.classList.remove('hidden');
+    var pct = res.grandTotalApplicable > 0 ? Math.round((res.grandTotalPaid / res.grandTotalApplicable) * 100) : 0;
+    document.getElementById('hw-foot-applicable').textContent  = fmtMoney(res.grandTotalApplicable);
+    document.getElementById('hw-foot-collected').textContent   = fmtMoney(res.grandTotalPaid);
+    document.getElementById('hw-foot-outstanding').textContent = fmtMoney(res.grandTotalOutstanding);
+    document.getElementById('hw-foot-pct').textContent         = pct + '%';
+  }
+  var html = '';
+  res.rows.forEach(function(row, idx) {
+    var pct = row.totalApplicable > 0 ? Math.round((row.totalPaid / row.totalApplicable) * 100) : 0;
+    var pctColor = pct >= 90 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+    var outColor = row.totalOutstanding > 0 ? 'var(--danger)' : 'var(--success)';
+    var pctBar = '<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + pctColor + ';border-radius:4px"></div></div><span style="font-size:0.78rem;font-weight:700;color:' + pctColor + '">' + pct + '%</span></div>';
+    html += '<tr>';
+    html += '<td style="color:var(--text3);font-size:0.8rem">' + (idx + 1) + '</td>';
+    html += '<td style="font-weight:700">' + escapeHtml(row.headName) + '</td>';
+    html += '<td style="text-align:right">' + row.studentCount + '</td>';
+    html += '<td style="text-align:right">' + fmtMoney(row.totalApplicable) + '</td>';
+    html += '<td style="text-align:right;color:var(--success);font-weight:600">' + fmtMoney(row.totalPaid) + '</td>';
+    html += '<td style="text-align:right;color:' + outColor + ';font-weight:700">' + fmtMoney(row.totalOutstanding) + '</td>';
+    html += '<td style="min-width:120px">' + pctBar + '</td>';
+    html += '<td><button class="btn btn-ghost btn-sm" onclick="showHwBreakdown(' + idx + ')" style="font-size:0.75rem;padding:4px 10px"><span class="material-icons-round" style="font-size:14px;vertical-align:middle">expand_more</span> Students</button></td>';
+    html += '</tr>';
+    html += '<tr id="hw-breakdown-' + idx + '" class="hidden" style="background:var(--bg2)">';
+    html += '<td colspan="8" style="padding:12px 20px">';
+    html += '<div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase">Student-wise breakdown: ' + escapeHtml(row.headName) + '</div>';
+    html += '<table style="width:100%;font-size:0.82rem"><thead><tr style="color:var(--text3)"><th style="text-align:left;padding:4px 8px">Student</th><th style="text-align:left;padding:4px 8px">Room</th><th style="text-align:left;padding:4px 8px">Month</th><th style="text-align:right;padding:4px 8px">Applicable</th><th style="text-align:right;padding:4px 8px">Paid</th><th style="text-align:right;padding:4px 8px">Outstanding</th><th style="text-align:left;padding:4px 8px">Status</th></tr></thead><tbody>';
+    (row.studentBreakdown || []).forEach(function(sb) {
+      var stOutColor = sb.outstanding > 0 ? 'var(--danger)' : 'var(--success)';
+      var stStatusColor = sb.status === 'Paid' ? 'var(--success)' : sb.status === 'Partial' ? 'var(--warning)' : 'var(--text2)';
+      html += '<tr style="border-top:1px solid var(--border)">';
+      html += '<td style="padding:4px 8px;font-weight:600">' + escapeHtml(sb.studentName || sb.appId) + '</td>';
+      html += '<td style="padding:4px 8px;color:var(--text2)">' + escapeHtml(sb.roomNumber || '-') + '</td>';
+      html += '<td style="padding:4px 8px;color:var(--text2)">' + escapeHtml(sb.month || '-') + '</td>';
+      html += '<td style="text-align:right;padding:4px 8px">' + fmtMoney(sb.applicable) + '</td>';
+      html += '<td style="text-align:right;padding:4px 8px;color:var(--success)">' + fmtMoney(sb.paid) + '</td>';
+      html += '<td style="text-align:right;padding:4px 8px;font-weight:700;color:' + stOutColor + '">' + fmtMoney(sb.outstanding) + '</td>';
+      html += '<td style="padding:4px 8px"><span style="font-size:0.72rem;font-weight:700;color:' + stStatusColor + '">' + escapeHtml(sb.status) + '</span></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></td></tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function showHwBreakdown(idx) {
+  var row = document.getElementById('hw-breakdown-' + idx);
+  if (!row) return;
+  row.classList.toggle('hidden');
+}
+
+function exportHeadWiseCsv() {
+  if (!_hwData || !_hwData.rows || _hwData.rows.length === 0) {
+    showToast('Load the Head-wise report first before exporting.', 'error'); return;
+  }
+  var csv = 'Fee Head,Students,Applicable (Rs),Paid (Rs),Outstanding (Rs),Collection %\n';
+  _hwData.rows.forEach(function(r) {
+    var pct = r.totalApplicable > 0 ? Math.round((r.totalPaid / r.totalApplicable) * 100) : 0;
+    csv += ['"' + r.headName.replace(/"/g,'""') + '"', r.studentCount, r.totalApplicable, r.totalPaid, r.totalOutstanding, pct + '%'].join(',') + '\n';
+    (r.studentBreakdown || []).forEach(function(sb) {
+      csv += ['"  > ' + (sb.studentName||sb.appId).replace(/"/g,'""') + '"', '"' + (sb.roomNumber||'') + '"', '"' + (sb.month||'') + '"', sb.applicable, sb.paid, sb.outstanding, '"' + sb.status + '"'].join(',') + '\n';
+    });
+  });
+  csv += ['Grand Total','',_hwData.grandTotalApplicable,_hwData.grandTotalPaid,_hwData.grandTotalOutstanding,''].join(',');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url;
+  a.download = 'HeadWise_Outstanding_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Head-wise outstanding exported to CSV', 'success');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function openCollectFromSFD(ledgerId){
 
   // Find entry in the current SFD entries
@@ -11447,28 +11661,39 @@ function openMultipleCollectFromSFD() {
       showToast("Please specify at least one payment amount greater than zero.", "error");
       return;
     }
-    
-    setBtnLoading('collect-confirm-btn', true);
-    google.script.run.withSuccessHandler(function(res) {
-      setBtnLoading('collect-confirm-btn', false);
-      
-      if (res.success) {
-        closeModal('modal-collect');
-        showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
-        
-        viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
-        loadPendingFees();
-        loadFees();
-        viewReceipt(res.receiptId, res.receipt);
-      } else {
-        showToast('Error: ' + res.message, 'error');
-        openModal('modal-student-fee');
+
+    // ── Confirmation before saving ──
+    var totalAmt = finalPayments.reduce(function(sum, p) { return sum + p.amountPaid; }, 0);
+    var studentLabel = (_currentSfdName || 'Student');
+    showConfirm({
+      title: 'Confirm Fee Collection',
+      msg: 'Save receipt for ' + studentLabel + '?\n\nTotal: ' + fmtMoney(totalAmt) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
+      icon: 'payments',
+      iconColor: 'green',
+      okLabel: 'Yes, Save Receipt',
+      okClass: 'btn-success',
+      onConfirm: function() {
+        setBtnLoading('collect-confirm-btn', true);
+        google.script.run.withSuccessHandler(function(res) {
+          setBtnLoading('collect-confirm-btn', false);
+          if (res.success) {
+            closeModal('modal-collect');
+            showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
+            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+            loadPendingFees();
+            loadFees();
+            viewReceipt(res.receiptId, res.receipt);
+          } else {
+            showToast('Error: ' + res.message, 'error');
+            openModal('modal-student-fee');
+          }
+        }).withFailureHandler(function(err) {
+          setBtnLoading('collect-confirm-btn', false);
+          showToast('Server error: ' + err.message, 'error');
+          openModal('modal-student-fee');
+        }).recordMultipleFeePayments(finalPayments, mode, txn, currentUser.name, remarks);
       }
-    }).withFailureHandler(function(err) {
-      setBtnLoading('collect-confirm-btn', false);
-      showToast('Server error: ' + err.message, 'error');
-      openModal('modal-student-fee');
-    }).recordMultipleFeePayments(finalPayments, mode, txn, currentUser.name, remarks);
+    });
   };
   
   openModal('modal-collect');
@@ -13623,28 +13848,41 @@ function doCollectPayment(ledgerId){
   if(!amount||amount<=0){showToast('Please enter a valid amount.','error');return;}
   if(!mode){showToast('Please select a payment mode.','error');return;}
   var txn=document.getElementById('collect-txn').value.trim(),remarks=document.getElementById('collect-remarks').value.trim();
-  setBtnLoading('collect-confirm-btn',true);
-  google.script.run.withSuccessHandler(function(res){
-    setBtnLoading('collect-confirm-btn',false);
-    if(res.success){
-      closeModal('modal-collect');
-      showToast('Payment recorded! Receipt: '+res.receiptId+' | Balance: '+fmtMoney(res.newBalance),'success');
-      loadPendingFees();
-      loadFees();
-      if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
-        viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
-      }
-      viewReceipt(res.receiptId, res.receipt);
+
+  // ── Confirmation before saving ──
+  var studentLabel = (_currentSfdName || 'Student');
+  showConfirm({
+    title: 'Confirm Fee Collection',
+    msg: 'Save receipt for ' + studentLabel + '?\n\nAmount: ' + fmtMoney(amount) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
+    icon: 'payments',
+    iconColor: 'green',
+    okLabel: 'Yes, Save Receipt',
+    okClass: 'btn-success',
+    onConfirm: function() {
+      setBtnLoading('collect-confirm-btn',true);
+      google.script.run.withSuccessHandler(function(res){
+        setBtnLoading('collect-confirm-btn',false);
+        if(res.success){
+          closeModal('modal-collect');
+          showToast('Payment recorded! Receipt: '+res.receiptId+' | Balance: '+fmtMoney(res.newBalance),'success');
+          loadPendingFees();
+          loadFees();
+          if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
+            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+          }
+          viewReceipt(res.receiptId, res.receipt);
+        }
+        else {
+          showToast('Error: '+res.message,'error');
+          if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
+        }
+      }).withFailureHandler(function(err){
+        setBtnLoading('collect-confirm-btn',false);
+        showToast('Server error: '+err.message,'error');
+        if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
+      }).recordFeePayment(ledgerId,amount,mode,txn,currentUser.name,remarks);
     }
-    else {
-      showToast('Error: '+res.message,'error');
-      if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
-    }
-  }).withFailureHandler(function(err){
-    setBtnLoading('collect-confirm-btn',false);
-    showToast('Server error: '+err.message,'error');
-    if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
-  }).recordFeePayment(ledgerId,amount,mode,txn,currentUser.name,remarks);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -13922,6 +14160,7 @@ function openEasebuzzFromCollectModal() {
   var totalAmt = 0;
   var headNames = [];
   var firstLedgerId = null;
+  var multiPayments = [];
   inputs.forEach(function(inp) {
     var val = parseFloat(inp.value) || 0;
     totalAmt += val;
@@ -13929,6 +14168,7 @@ function openEasebuzzFromCollectModal() {
     if (!firstLedgerId && lid) firstLedgerId = lid;
     var e = (_sfdEntries || []).find(function(x){ return x.ledgerId === lid; });
     if (e && e.headName) headNames.push(e.headName);
+    if (lid && val > 0) multiPayments.push({ ledgerId: lid, amountPaid: val });
   });
 
   if (totalAmt <= 0) {
@@ -13954,7 +14194,8 @@ function openEasebuzzFromCollectModal() {
     applicableMonth: '',
     applicableAmount: totalAmt,
     balance       : totalAmt,
-    academicYear  : activeAcademicYear || '2026-27'
+    academicYear  : activeAcademicYear || '2026-27',
+    multiPayments : multiPayments.length > 1 ? multiPayments : null
   };
   _currentEasebuzzLinkData = null;
 
@@ -14217,7 +14458,7 @@ function doCheckEasebuzzStatus() {
         var paidAmt = parseFloat(data.amountPaid) || _currentEasebuzzLinkData.amount;
         var remarks = 'Paid online via Easebuzz Payment Link (' + activeTxnId + ')';
 
-        google.script.run.withSuccessHandler(function(res){
+        var _successCb = function(res){
           if (res.success) {
             closeModal('modal-cashfree-link');
             showToast('✅ Payment recorded! Receipt ID: ' + res.receiptId, 'success');
@@ -14245,16 +14486,37 @@ function doCheckEasebuzzStatus() {
           } else {
             showToast('Error recording fee in database: ' + res.message, 'error');
           }
-        }).withFailureHandler(function(err){
+        };
+        var _failureCb = function(err){
           showToast('Database error: ' + err.message, 'error');
-        }).recordFeePayment(
-          _currentEasebuzzLinkData.ledgerId,
-          paidAmt,
-          'Online (Easebuzz)',
-          txnId,
-          (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
-          remarks
-        );
+        };
+
+        // Multi-head payment: use recordMultipleFeePayments so each head's balance is checked individually
+        var multiPmts = _currentEasebuzzLedger && _currentEasebuzzLedger.multiPayments;
+        if (multiPmts && multiPmts.length > 1) {
+          google.script.run
+            .withSuccessHandler(_successCb)
+            .withFailureHandler(_failureCb)
+            .recordMultipleFeePayments(
+              multiPmts,
+              'Online (Easebuzz)',
+              txnId,
+              (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
+              remarks
+            );
+        } else {
+          google.script.run
+            .withSuccessHandler(_successCb)
+            .withFailureHandler(_failureCb)
+            .recordFeePayment(
+              _currentEasebuzzLinkData.ledgerId,
+              paidAmt,
+              'Online (Easebuzz)',
+              txnId,
+              (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
+              remarks
+            );
+        }
 
       } else {
         document.getElementById('cf-status-badge').textContent = 'Status: ' + (data.linkStatus || 'PENDING');
@@ -14465,23 +14727,36 @@ function doCollectMultiplePayments() {
     return;
   }
   
-  setBtnLoading('collect-confirm-btn', true);
-  google.script.run.withSuccessHandler(function(res) {
-    setBtnLoading('collect-confirm-btn', false);
-    
-    if (res.success) {
-      closeModal('modal-collect');
-      showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
-      loadPendingFees();
-      loadFees();
-      viewReceipt(res.receiptId, res.receipt);
-    } else {
-      showToast('Error: ' + res.message, 'error');
+  // ── Confirmation before saving ──
+  var totalAmt = payments.reduce(function(sum, p) { return sum + p.amountPaid; }, 0);
+  var studentLabel = (_currentSfdName || 'Student');
+  showConfirm({
+    title: 'Confirm Fee Collection',
+    msg: 'Save receipt for ' + studentLabel + '?\n\nTotal: ' + fmtMoney(totalAmt) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
+    icon: 'payments',
+    iconColor: 'green',
+    okLabel: 'Yes, Save Receipt',
+    okClass: 'btn-success',
+    onConfirm: function() {
+      setBtnLoading('collect-confirm-btn', true);
+      google.script.run.withSuccessHandler(function(res) {
+        setBtnLoading('collect-confirm-btn', false);
+        
+        if (res.success) {
+          closeModal('modal-collect');
+          showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
+          loadPendingFees();
+          loadFees();
+          viewReceipt(res.receiptId, res.receipt);
+        } else {
+          showToast('Error: ' + res.message, 'error');
+        }
+      }).withFailureHandler(function(err) {
+        setBtnLoading('collect-confirm-btn', false);
+        showToast('Server error: ' + err.message, 'error');
+      }).recordMultipleFeePayments(payments, mode, txn, currentUser.name, remarks);
     }
-  }).withFailureHandler(function(err) {
-    setBtnLoading('collect-confirm-btn', false);
-    showToast('Server error: ' + err.message, 'error');
-  }).recordMultipleFeePayments(payments, mode, txn, currentUser.name, remarks);
+  });
 }
 
 

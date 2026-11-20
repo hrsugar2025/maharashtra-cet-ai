@@ -1117,6 +1117,22 @@ function normalizeFeeHeadName(name) {
     .trim();
 }
 
+function parseReceiptFeeTypeItems(feeType) {
+  if (!feeType) return [];
+  var items = [];
+  var re = /(?:^|,\s*)(.*?)(?:\s*\(\s*[₹Rs.]*\s*([\d.]+)\s*\))(?=,|$)/gi;
+  var match;
+  var foundAny = false;
+  while ((match = re.exec(feeType)) !== null) {
+    foundAny = true;
+    items.push({ head: match[1].trim(), amount: parseFloat(match[2]) });
+  }
+  if (!foundAny) {
+    return [{ head: feeType.trim(), amount: null }];
+  }
+  return items;
+}
+
 function isFeeHeadMatch(feeTypeA, feeTypeB) {
   if (!feeTypeA || !feeTypeB) return false;
   var a = feeTypeA.toString().trim().toLowerCase();
@@ -1577,6 +1593,33 @@ function reconcileAllFeeReceipts(targetAppId) {
         if (remainingAmount <= 0) continue;
 
         var allocatedLedgerIds = {};
+
+        // Pass 0: Itemized heads with specified amounts (from multi-head consolidated receipts)
+        var items = parseReceiptFeeTypeItems(rcpt.feeType);
+        var hasItemizedAmounts = items.some(function(it) { return it.amount !== null && it.amount > 0; });
+        if (hasItemizedAmounts) {
+          items.forEach(function(it) {
+            var itAmt = it.amount || 0;
+            if (itAmt <= 0 || remainingAmount <= 0) return;
+            for (var m = 0; m < studentLedger.length && itAmt > 0 && remainingAmount > 0; m++) {
+              var entry = studentLedger[m];
+              if (entry.balance <= 0) continue;
+              if (isFeeHeadMatch(entry.headName, it.head)) {
+                var allocAmt = Math.min(entry.balance, itAmt, remainingAmount);
+                entry.paidAmount += allocAmt;
+                entry.balance -= allocAmt;
+                entry.status = entry.balance <= 0 ? "Paid" : "Partial";
+                remainingAmount -= allocAmt;
+                itAmt -= allocAmt;
+                allocatedLedgerIds[entry.ledgerId] = (allocatedLedgerIds[entry.ledgerId] || 0) + allocAmt;
+                var dIdx = entry.dataRowIndex;
+                ledgerData[dIdx][9] = entry.paidAmount;
+                ledgerData[dIdx][10] = entry.balance;
+                ledgerData[dIdx][12] = entry.status;
+              }
+            }
+          });
+        }
 
         // Find candidate ledger rows matching this fee type
         var matchingEntries = studentLedger.filter(function(entry) {
@@ -9726,6 +9769,134 @@ function auditAllStudentFees(targetAppId) {
     for (var txn in globalTxnMap){if(globalTxnMap[txn].length>1)dupGlobal.push({txnId:txn,receiptIds:globalTxnMap[txn]});}
     var summary={ total:auditRows.length, ok:auditRows.filter(function(r){return r.status==="OK";}).length, mismatch:auditRows.filter(function(r){return r.status==="MISMATCH";}).length, noLedger:auditRows.filter(function(r){return r.status==="NO_LEDGER";}).length, noReceipts:auditRows.filter(function(r){return r.status==="NO_RECEIPTS";}).length, totalMismatchAmount:auditRows.reduce(function(s,r){return s+(r.status!=="OK"?Math.abs(r.delta):0);},0) };
     return { success:true, auditRows:auditRows, summary:summary, duplicateTxnsGlobal:dupGlobal };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+
+// ── HEAD-WISE OUTSTANDING FEE RECONCILIATION ─────────────────────────────────
+/**
+ * getHeadWiseOutstanding
+ *
+ * Returns per-fee-head outstanding balances across all students.
+ * Optionally filter by academicYear.
+ * Result structure:
+ *   {
+ *     success: true,
+ *     rows: [{ headName, totalApplicable, totalPaid, totalOutstanding, studentCount, studentBreakdown: [...] }],
+ *     grandTotalApplicable, grandTotalPaid, grandTotalOutstanding,
+ *     reconciledAt
+ *   }
+ */
+function getHeadWiseOutstanding(academicYear) {
+  try {
+    var ldgSheet  = getSheet("STUDENT_FEE_LEDGER");
+    var ldgData   = ldgSheet.getDataRange().getValues();
+
+    var allotSheet = getSheet("ROOM_ALLOTMENTS");
+    var allotData  = allotSheet.getDataRange().getValues();
+    var allotMap   = {};
+    for (var a = 1; a < allotData.length; a++) {
+      var ar = allotData[a];
+      if (!ar[0] || ar[0].toString().trim().toUpperCase() === "ALLOTMENT_ID") continue;
+      var aAppId = (ar[1] || "").toString().trim();
+      if (aAppId) allotMap[aAppId] = {
+        studentName: (ar[2] || "").toString().trim(),
+        roomNumber:  (ar[4] || "").toString().trim(),
+        status:      (ar[9] || "").toString().trim()
+      };
+    }
+
+    // headMap: { headName -> { totalApplicable, totalPaid, totalOutstanding, studentCount, studentBreakdown: [] } }
+    var headMap = {};
+    var filterYear = (academicYear && academicYear !== "All") ? normalizeYearString(academicYear.toString().trim()) : null;
+
+    for (var l = 1; l < ldgData.length; l++) {
+      var lr = ldgData[l];
+      if (!lr[0] || lr[0].toString().trim().toUpperCase() === "LEDGER_ID") continue;
+      var lStatus = (lr[12] || "").toString().trim().toLowerCase();
+      if (lStatus === "cancelled") continue;
+
+      var lAppId   = (lr[1]  || "").toString().trim();
+      var lName    = (lr[2]  || "").toString().trim();
+      var lRoom    = (lr[3]  || "").toString().trim();
+      var lHead    = (lr[6]  || "Unspecified").toString().trim();
+      var lMonth   = (lr[7]  || "").toString().trim();
+      var lApply   = parseFloat(lr[8])  || 0;
+      var lPaid    = parseFloat(lr[9])  || 0;
+      var lBalance = parseFloat(lr[10]) || 0;
+      var lYear    = normalizeYearString((lr[14] || "").toString().trim());
+
+      if (filterYear && lYear && lYear !== filterYear) continue;
+
+      // Use allotMap for student name/room if available
+      if (allotMap[lAppId]) {
+        lName = allotMap[lAppId].studentName || lName;
+        lRoom = allotMap[lAppId].roomNumber  || lRoom;
+      }
+
+      if (!headMap[lHead]) {
+        headMap[lHead] = {
+          headName:         lHead,
+          totalApplicable:  0,
+          totalPaid:        0,
+          totalOutstanding: 0,
+          studentCount:     0,
+          studentBreakdown: []
+        };
+      }
+
+      headMap[lHead].totalApplicable  += lApply;
+      headMap[lHead].totalPaid        += lPaid;
+      headMap[lHead].totalOutstanding += lBalance;
+
+      // Per-student row under this head
+      headMap[lHead].studentBreakdown.push({
+        appId:       lAppId,
+        studentName: lName,
+        roomNumber:  lRoom,
+        month:       lMonth,
+        applicable:  lApply,
+        paid:        lPaid,
+        outstanding: lBalance,
+        status:      (lr[12] || "Pending").toString().trim(),
+        academicYear: lYear
+      });
+    }
+
+    // Build sorted rows
+    var rows = [];
+    for (var h in headMap) {
+      var hd = headMap[h];
+      // Count distinct students
+      var studentSet = {};
+      hd.studentBreakdown.forEach(function(sb) { if (sb.appId) studentSet[sb.appId] = true; });
+      hd.studentCount = Object.keys(studentSet).length;
+      // Round
+      hd.totalApplicable  = Math.round(hd.totalApplicable  * 100) / 100;
+      hd.totalPaid        = Math.round(hd.totalPaid        * 100) / 100;
+      hd.totalOutstanding = Math.round(hd.totalOutstanding * 100) / 100;
+      // Sort breakdown by student name
+      hd.studentBreakdown.sort(function(a, b) { return a.studentName.localeCompare(b.studentName); });
+      rows.push(hd);
+    }
+    // Sort rows by outstanding descending
+    rows.sort(function(a, b) { return b.totalOutstanding - a.totalOutstanding; });
+
+    var grandApply = rows.reduce(function(s, r) { return s + r.totalApplicable;  }, 0);
+    var grandPaid  = rows.reduce(function(s, r) { return s + r.totalPaid;        }, 0);
+    var grandOut   = rows.reduce(function(s, r) { return s + r.totalOutstanding; }, 0);
+
+    return {
+      success:               true,
+      rows:                  rows,
+      grandTotalApplicable:  Math.round(grandApply * 100) / 100,
+      grandTotalPaid:        Math.round(grandPaid  * 100) / 100,
+      grandTotalOutstanding: Math.round(grandOut   * 100) / 100,
+      reconciledAt:          todayFormatted(),
+      academicYear:          academicYear || "All"
+    };
   } catch (err) {
     return { success: false, message: err.message };
   }

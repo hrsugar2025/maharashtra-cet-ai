@@ -7758,10 +7758,60 @@ window.google = {
               var allRowsToSettle = newLedgerRows.concat(customLedgerRows);
               receipts.sort(function(a,b) { return (a.receipt_date || '').localeCompare(b.receipt_date || ''); });
 
+              function parseReceiptFeeTypeItems(feeType) {
+                if (!feeType) return [];
+                var items = [];
+                var re = /(?:^|,\s*)(.*?)(?:\s*\(\s*[₹Rs.]*\s*([\d.]+)\s*\))(?=,|$)/gi;
+                var match;
+                var foundAny = false;
+                while ((match = re.exec(feeType)) !== null) {
+                  foundAny = true;
+                  items.push({ head: match[1].trim(), amount: parseFloat(match[2]) });
+                }
+                if (!foundAny) {
+                  return [{ head: feeType.trim(), amount: null }];
+                }
+                return items;
+              }
+
+              function isHeadMatchForSettlement(hName, fType) {
+                hName = (hName || '').toLowerCase();
+                fType = (fType || '').toLowerCase();
+                return (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 ||
+                  (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) ||
+                  (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) ||
+                  (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) ||
+                  (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1) ||
+                  ((fType.indexOf('brochure') !== -1 || fType.indexOf('application form') !== -1) && (hName.indexOf('brochure') !== -1 || hName.indexOf('application form') !== -1)));
+              }
+
               receipts.forEach(function(rcpt) {
                 var remaining = parseFloat(rcpt.amount_paid) || 0;
                 var fType = (rcpt.fee_type || '').toLowerCase();
                 var fMonth = (rcpt.fee_month || '').toLowerCase();
+
+                // Pass 0: Itemized heads with specified amounts (from multi-head consolidated receipts)
+                var items = parseReceiptFeeTypeItems(rcpt.fee_type);
+                var hasItemizedAmounts = items.some(function(it) { return it.amount !== null && it.amount > 0; });
+                if (hasItemizedAmounts) {
+                  items.forEach(function(it) {
+                    var itAmt = it.amount || 0;
+                    if (itAmt <= 0 || remaining <= 0) return;
+                    for (var i = 0; i < allRowsToSettle.length && itAmt > 0 && remaining > 0; i++) {
+                      var row = allRowsToSettle[i];
+                      var bal = parseFloat(row.balance) || 0;
+                      if (bal <= 0) continue;
+                      if (isHeadMatchForSettlement(row.head_name, it.head)) {
+                        var settle = Math.min(itAmt, bal, remaining);
+                        row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
+                        row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
+                        row.status = row.balance <= 0 ? 'Paid' : 'Partial';
+                        itAmt -= settle;
+                        remaining -= settle;
+                      }
+                    }
+                  });
+                }
 
                 // Pass 1: exact head + month
                 for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
@@ -7771,8 +7821,8 @@ window.google = {
                   var hName = (row.head_name || '').toLowerCase();
                   var hMonth = (row.applicable_month || '').toLowerCase();
 
-                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1) || (fType.indexOf('linen') !== -1 && hName.indexOf('linen') !== -1) || ((fType.indexOf('brochure') !== -1 || fType.indexOf('application form') !== -1) && (hName.indexOf('brochure') !== -1 || hName.indexOf('application form') !== -1)));
-                  var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
+                  var headMatch = isHeadMatchForSettlement(hName, fType);
+                  var monthMatch = (!fMonth || fMonth === 'hostel fee' || fMonth === 'all' || fMonth === 'consolidated' || hMonth.indexOf(fMonth) !== -1 || fMonth.indexOf(hMonth) !== -1);
 
                   if (headMatch && monthMatch) {
                     var settle = Math.min(remaining, bal);
@@ -7789,7 +7839,7 @@ window.google = {
                   var bal = parseFloat(row.balance) || 0;
                   if (bal <= 0) continue;
                   var hName = (row.head_name || '').toLowerCase();
-                  var headMatch = (hName.indexOf(fType) !== -1 || fType.indexOf(hName) !== -1 || (fType.indexOf('security') !== -1 && hName.indexOf('security') !== -1) || (fType.indexOf('acco') !== -1 && hName.indexOf('acco') !== -1) || (fType.indexOf('mess') !== -1 && hName.indexOf('mess') !== -1));
+                  var headMatch = isHeadMatchForSettlement(hName, fType);
                   if (headMatch) {
                     var settle = Math.min(remaining, bal);
                     row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
@@ -7799,11 +7849,14 @@ window.google = {
                   }
                 }
 
-                // Pass 3: generic fallback
+                // Pass 3: generic fallback (never settle security deposit unless receipt was specifically for deposit/all)
+                var allowDepositFallback = (fType.indexOf('deposit') !== -1 || fType.indexOf('security') !== -1 || fType === 'all' || fType === 'hostel fee payment');
                 for (var i = 0; i < allRowsToSettle.length && remaining > 0; i++) {
                   var row = allRowsToSettle[i];
                   var bal = parseFloat(row.balance) || 0;
                   if (bal <= 0) continue;
+                  var isDepositRow = (row.head_name || '').toLowerCase().indexOf('security') !== -1 || (row.head_name || '').toLowerCase().indexOf('deposit') !== -1;
+                  if (isDepositRow && !allowDepositFallback) continue;
                   var settle = Math.min(remaining, bal);
                   row.paid_amount = (parseFloat(row.paid_amount) || 0) + settle;
                   row.balance = Math.max(0, (parseFloat(row.applicable_amount) || 0) - row.paid_amount);
