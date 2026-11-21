@@ -1333,66 +1333,6 @@ if (typeof window.google.script.run === 'undefined') {
   </div></div>
 </div>
 
-<script>
-// Early doLogin definition — guarantees login works even if the large main script block fails to parse.
-// The main script block will redefine doLogin with the full implementation if it loads successfully.
-function doLogin(){
-  try {
-    var emailEl = document.getElementById('login-email');
-    var passEl = document.getElementById('login-password');
-    var email = emailEl ? emailEl.value.trim() : '';
-    var pass = passEl ? passEl.value.trim() : '';
-    if (!email || !pass) {
-      alert('Please enter email and password.');
-      return;
-    }
-    var btn = document.getElementById('login-btn');
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = 'Signing in\u2026'; }
-    var cleanE = email.toLowerCase();
-    if (cleanE === 'admin' || cleanE === 'admin@amghostel.com' || cleanE.includes('admin')) {
-      window.currentUser = { success:true, userId:'U001', name:'Admin', role:'Admin', email:'admin@amghostel.com', user:{name:'Admin',role:'Admin',email:'admin@amghostel.com'} };
-      if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
-      else { document.getElementById('login-page').classList.add('hidden'); var al = document.getElementById('app-layout'); if(al) al.classList.remove('hidden'); }
-      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-      return;
-    }
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      google.script.run.withSuccessHandler(function(res){
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-        if(res && res.success){
-          window.currentUser = res;
-          if(res.role === 'Student' && typeof showStudentPortal === 'function') { showStudentPortal(res); }
-          else if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
-        } else { alert('Login failed: ' + ((res && res.message) || 'Unknown error')); }
-      }).withFailureHandler(function(err){
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-        alert('Server error: ' + (err ? err.message : 'Unknown'));
-      }).loginUser(email, pass);
-    } else {
-      // Supabase/web mode fallback
-      if (typeof window.api !== 'undefined' && typeof window.api.login === 'function') {
-        window.api.login(email, pass, function(res){
-          if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-          if(res && res.success){
-            window.currentUser = res;
-            if(res.role === 'Student' && typeof showStudentPortal === 'function') { showStudentPortal(res); }
-            else if (typeof showApp === 'function') { showApp(); if (typeof showPage === 'function') showPage('dashboard'); }
-          } else { alert('Login failed: ' + ((res && res.message) || 'Unknown error')); }
-        });
-      } else {
-        alert('Login system is still loading. Please wait a moment and try again.');
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-      }
-    }
-  } catch(e) {
-    console.error('doLogin error:', e);
-    alert('Login error: ' + e.message);
-    var btn = document.getElementById('login-btn');
-    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span class="material-icons-round">login</span> Sign In'; }
-  }
-}
-</script>
-
 <!-- STUDENT FORM -->
 <div id="public-form-page" class="hidden">
   <div class="public-form-card">
@@ -1911,6 +1851,7 @@ function doLogin(){
               <option value="Non-Cash">All Non-Cash</option>
             </select>
             <button class="btn btn-primary btn-sm" onclick="doReconcileFeeReceipts()" title="Auto-settle all fee receipts against student fee dues fee type wise"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;margin-right:4px;">sync</span> Settle Receipts to Dues</button>
+            <button class="btn btn-success btn-sm" onclick="openTallyExportModal()" title="Export fee receipts to Tally XML with auto-created Fee Heads &amp; Bank ledgers" style="display:flex;align-items:center;gap:4px;font-weight:600;"><span class="material-icons-round" style="font-size:16px;">file_download</span> Export to Tally (XML)</button>
             <button class="btn btn-ghost btn-sm" onclick="loadFees()" title="Refresh Receipts"><span class="material-icons-round">refresh</span></button>
           </div>
           <div class="card"><div class="card-header"><div><div class="card-title">Fee Receipts</div><div class="card-sub" id="fee-count">Loading&hellip;</div></div></div><div class="table-container"><table><thead><tr><th>Receipt ID</th><th>Date</th><th>Student</th><th>Room</th><th>Fee Type</th><th>Amount</th><th>Mode</th><th>Transaction Ref</th><th>Remarks</th><th>Bank Recon</th><th>Actions</th></tr></thead><tbody id="fee-tbody"></tbody></table></div></div>
@@ -1938,8 +1879,8 @@ function doLogin(){
                 </select>
               </div>
               <div class="form-group"><label class="form-label">Amount (&#8377;) *</label><input type="number" id="fee-amount" class="form-input" placeholder="0.00"/></div>
-              <div class="form-group"><label class="form-label">Payment Mode *</label><select id="fee-mode" class="form-select"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option></select></div>
-              <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="fee-txn" class="form-input" placeholder="QR/Bank ref"/></div>
+              <div class="form-group"><label class="form-label">Payment Mode *</label><select id="fee-mode" class="form-select" onchange="var n=document.getElementById('fee-eb-note'); if(n) n.style.display=(this.value && this.value.toLowerCase().indexOf('easebuzz')!==-1)?'block':'none';"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Payment Gateway (Easebuzz)</option><option>Online (Easebuzz)</option></select></div>
+              <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="fee-txn" class="form-input" placeholder="QR/Bank ref / Easebuzz Txn ID"/><div id="fee-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Easebuzz payment will be strictly verified via Easebuzz API and confirmed before generating receipt.</div></div>
               <div class="form-group"><label class="form-label">Fee Month</label><select id="fee-month" class="form-select"><option value="">N/A</option><option>January</option><option>February</option><option>March</option><option>April</option><option>May</option><option>June</option><option>July</option><option>August</option><option>September</option><option>October</option><option>November</option><option>December</option></select></div>
               <div class="form-group"><label class="form-label">Fee Year</label><input type="number" id="fee-year" class="form-input" value="2026"/></div>
               <div class="form-group span-2"><label class="form-label">Remarks</label><input type="text" id="fee-remarks" class="form-input" placeholder="Optional notes"/></div>
@@ -2224,74 +2165,6 @@ function doLogin(){
               <tbody id="audit-table-body">
                 <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text2)"><span class="material-icons-round" style="font-size:36px;display:block;margin-bottom:8px;color:var(--text3)">policy</span>Click "Run Full Audit" to load the report</td></tr>
               </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- HEAD-WISE OUTSTANDING FEE RECONCILIATION -->
-        <div class="card" style="margin-bottom:24px" id="headwise-outstanding-card">
-          <div class="card-header" style="margin-bottom:16px">
-            <div>
-              <div class="card-title"><span class="material-icons-round" style="vertical-align:middle;margin-right:6px;font-size:20px;color:var(--warning)">account_balance_wallet</span>Head-wise Outstanding Fee Reconciliation</div>
-              <div class="card-sub">View total applicable, collected and outstanding fee amount per fee head across all students. Run Reconcile first to ensure accurate figures.</div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select class="form-select" id="hw-year-filter" style="max-width:150px">
-                <option value="All">All Years</option>
-              </select>
-              <button class="btn btn-primary btn-sm" onclick="loadHeadWiseOutstanding()">
-                <span class="material-icons-round" style="font-size:16px">account_balance_wallet</span> Load Head-wise Report
-              </button>
-              <button class="btn btn-ghost btn-sm" onclick="exportHeadWiseCsv()">
-                <span class="material-icons-round" style="font-size:16px">download</span> Export CSV
-              </button>
-            </div>
-          </div>
-
-          <!-- Summary stats -->
-          <div id="hw-stats-row" class="hidden" style="display:none;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
-            <div class="audit-stat-card">
-              <div class="stat-icon purple"><span class="material-icons-round">category</span></div>
-              <div><div class="stat-value" id="hw-stat-heads">—</div><div class="stat-label">Fee Heads</div></div>
-            </div>
-            <div class="audit-stat-card">
-              <div class="stat-icon green"><span class="material-icons-round">payments</span></div>
-              <div><div class="stat-value" id="hw-stat-collected" style="color:var(--success)">—</div><div class="stat-label">Total Collected (₹)</div></div>
-            </div>
-            <div class="audit-stat-card">
-              <div class="stat-icon red"><span class="material-icons-round">money_off</span></div>
-              <div><div class="stat-value" id="hw-stat-outstanding" style="color:var(--danger)">—</div><div class="stat-label">Total Outstanding (₹)</div></div>
-            </div>
-          </div>
-
-          <!-- Table -->
-          <div class="table-container" id="hw-table-wrap">
-            <table id="hw-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Fee Head / Type</th>
-                  <th style="text-align:right">Students</th>
-                  <th style="text-align:right">Total Applicable (₹)</th>
-                  <th style="text-align:right">Total Collected (₹)</th>
-                  <th style="text-align:right">Outstanding (₹)</th>
-                  <th style="text-align:right">Collection %</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody id="hw-table-body">
-                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text2)"><span class="material-icons-round" style="font-size:36px;display:block;margin-bottom:8px;color:var(--text3)">account_balance_wallet</span>Click "Load Head-wise Report" to view outstanding fees by fee head</td></tr>
-              </tbody>
-              <tfoot id="hw-table-foot" class="hidden" style="display:none">
-                <tr style="font-weight:700;background:var(--bg2)">
-                  <td colspan="3">Grand Total</td>
-                  <td style="text-align:right" id="hw-foot-applicable">—</td>
-                  <td style="text-align:right" id="hw-foot-collected">—</td>
-                  <td style="text-align:right;color:var(--danger)" id="hw-foot-outstanding">—</td>
-                  <td id="hw-foot-pct">—</td>
-                  <td></td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </div>
@@ -3608,7 +3481,6 @@ function doLogin(){
       </div>
       <!-- Receipts section -->
       <div id="sfd-receipts-section" class="hidden">
-        <div id="sfd-receipts-summary" style="padding:0 4px;"></div>
         <div class="table-container">
           <table><thead><tr><th>Receipt ID</th><th>Date</th><th>Fee Head</th><th>Month</th><th>Amount</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody id="sfd-receipts-tbody"></tbody></table>
@@ -3636,8 +3508,8 @@ function doLogin(){
           <span id="collect-multiple-total-display" style="color: var(--success);">₹0</span>
         </div>
       </div>
-      <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Online (Easebuzz)</option><option>Online (Cashfree)</option></select></div>
-      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="QR/Bank reference (optional)"/></div>
+      <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select" onchange="var n=document.getElementById('collect-eb-note'); if(n) n.style.display=(this.value && this.value.toLowerCase().indexOf('easebuzz')!==-1)?'block':'none';"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Payment Gateway (Easebuzz)</option><option>Online (Easebuzz)</option><option>Online (Cashfree)</option></select></div>
+      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="Easebuzz Txn ID / Reference (Required for Easebuzz)"/><div id="collect-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Easebuzz payment will be strictly verified via Easebuzz API and confirmed before generating receipt.</div></div>
       <div class="form-group"><label class="form-label">Remarks</label><input type="text" id="collect-remarks" class="form-input" placeholder="Optional notes"/></div>
       <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); text-align: center;">
         <button type="button" class="btn btn-ghost btn-sm" onclick="openCashfreeFromCollectModal()" style="border-color: #10B981; color: #059669; font-weight: 600; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
@@ -3731,6 +3603,157 @@ function doLogin(){
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-cashfree-link')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EASEBUZZ PAYMENT CONFIRMATION WARNING MODAL -->
+<div id="modal-easebuzz-confirm" class="modal-overlay hidden" style="z-index: 10000;">
+  <div class="modal" style="max-width: 520px; border-top: 5px solid #F59E0B; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.08);">
+    <div class="modal-header" style="background: #FFFBEB; border-bottom: 1px solid #FDE68A; padding: 16px 20px;">
+      <div class="modal-title" style="color: #92400E; display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.05rem;">
+        <span class="material-icons-round" style="color: #D97706; font-size: 26px;">warning_amber</span>
+        Confirm Easebuzz Payment Credit
+      </div>
+      <button type="button" class="btn btn-ghost btn-icon" id="eb-confirm-close-btn" style="color: #92400E;">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <!-- Prominent Warning Banner -->
+      <div style="background: #FEF3C7; border: 1.5px solid #F59E0B; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; color: #92400E; font-size: 0.92rem; line-height: 1.5; font-weight: 600;">
+        ⚠️ Warning: Please verify in the Easebuzz Payment Gateway dashboard/report that this amount has been credited/collected. Have you confirmed the money is credited in Easebuzz?
+      </div>
+
+      <!-- Verification Details Box -->
+      <div style="background: var(--bg2, #F8FAFC); border: 1px solid var(--border, #E2E8F0); border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 0.86rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Student Name</div>
+            <div id="eb-confirm-student" style="font-weight: 600; color: var(--text, #1E293B); margin-top: 2px;">-</div>
+          </div>
+          <div>
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Total Amount</div>
+            <div id="eb-confirm-amount" style="font-weight: 700; color: #059669; font-size: 1.05rem; margin-top: 2px;">₹0.00</div>
+          </div>
+          <div style="grid-column: span 2;">
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Fee Head(s)</div>
+            <div id="eb-confirm-feehead" style="font-weight: 600; color: var(--text, #1E293B); margin-top: 2px;">-</div>
+          </div>
+          <div>
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Transaction ID</div>
+            <div id="eb-confirm-txnid" style="font-weight: 600; font-family: monospace; font-size: 0.8rem; word-break: break-all; margin-top: 2px; color: #334155;">-</div>
+          </div>
+          <div>
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Easepay ID</div>
+            <div id="eb-confirm-easepayid" style="font-weight: 600; font-family: monospace; font-size: 0.8rem; word-break: break-all; margin-top: 2px; color: #334155;">-</div>
+          </div>
+          <div style="grid-column: span 2; padding-top: 6px; border-top: 1px dashed var(--border, #E2E8F0);">
+            <div style="font-size: 0.72rem; color: var(--text3, #64748B); text-transform: uppercase; font-weight: 700;">Easebuzz Gateway Status</div>
+            <div id="eb-confirm-status" style="font-weight: 700; color: #059669; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+              <span class="material-icons-round" style="font-size: 16px; color: #059669;">check_circle</span>
+              <span>VERIFIED: SUCCESS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size: 0.82rem; color: var(--text2, #475569); line-height: 1.4;">
+        If money is NOT collected in Easebuzz or you deny confirmation, click <strong>"No / Cancel"</strong>. The official money receipt will <strong>NOT</strong> be generated.
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 14px 20px; background: var(--bg2, #F8FAFC); border-top: 1px solid var(--border, #E2E8F0); display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" class="btn btn-secondary" id="eb-confirm-no-btn" style="background: #F1F5F9; color: #334155; font-weight: 600; border: 1px solid #CBD5E1;">
+        <span class="material-icons-round" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">close</span>
+        No / Cancel (Deny Receipt)
+      </button>
+      <button type="button" class="btn btn-success" id="eb-confirm-yes-btn" style="background: #059669; font-weight: 700; padding: 8px 18px;">
+        <span class="material-icons-round" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">check_circle</span>
+        Yes, Confirmed &amp; Generate Receipt
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TALLY EXPORT MODAL -->
+<div id="modal-tally-export" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-tally-export')">
+  <div class="modal" style="max-width: 640px; width: 95%;">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="material-icons-round" style="color:var(--success);font-size:28px;">account_balance</span>
+        <div>
+          <div class="modal-title" style="font-size:1.15rem;font-weight:700;">Export Fee Receipts to Tally</div>
+          <div class="modal-sub" style="font-size:0.8rem;color:var(--text2);margin-top:2px;">Generates Tally-compatible XML (Auto-creates Fee Heads under Indirect Incomes &amp; Banks under Bank Accounts)</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-tally-export')"><span class="material-icons-round">close</span></button>
+    </div>
+    <div class="modal-body" style="padding: 20px 24px;">
+      
+      <!-- FILTER OPTIONS -->
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;font-weight:600;">Date Range (From)</label>
+          <input type="date" id="tally-from-date" class="form-input" onchange="updateTallyExportPreview()"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;font-weight:600;">Date Range (To)</label>
+          <input type="date" id="tally-to-date" class="form-input" onchange="updateTallyExportPreview()"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;font-weight:600;">Payment Mode</label>
+          <select id="tally-mode-filter" class="form-select" onchange="updateTallyExportPreview()">
+            <option value="All">All Modes (Cash &amp; Non-Cash)</option>
+            <option value="Cash">Cash Only</option>
+            <option value="Non-Cash">Bank / Online / UPI Only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:0.8rem;font-weight:600;">Receipt Status</label>
+          <select id="tally-status-filter" class="form-select" onchange="updateTallyExportPreview()">
+            <option value="Active">Active Only (Recommended)</option>
+            <option value="All">All (Including Cancelled)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- LEDGER RULES SUMMARY CARD -->
+      <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:16px; font-size:0.82rem;">
+        <div style="font-weight:600; color:var(--text); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+          <span class="material-icons-round" style="font-size:16px; color:var(--primary);">auto_awesome</span>
+          Automatic Tally Ledger Mapping (Zero manual setup):
+        </div>
+        <ul style="margin:0; padding-left:20px; line-height:1.6; color:var(--text2);">
+          <li><strong>Fee Heads</strong> (e.g. <em>Room Rent, Mess Fee</em>) &rarr; Auto-created under <strong>Indirect Incomes</strong></li>
+          <li><strong>Caution Deposit / Security Deposit</strong> &rarr; Auto-created under <strong>Current Liabilities</strong></li>
+          <li><strong>Bank Accounts</strong> (e.g. <em>UBI, KDCC, Online/Easebuzz</em>) &rarr; Auto-created under <strong>Bank Accounts</strong></li>
+          <li><strong>Cash Receipts</strong> &rarr; Mapped to standard <strong>Cash</strong> (Cash-in-hand)</li>
+        </ul>
+      </div>
+
+      <!-- SUMMARY STATS BOX -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+        <div>
+          <div style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--success); letter-spacing:0.05em;">Vouchers Ready</div>
+          <div id="tally-preview-count" style="font-size:1.3rem; font-weight:700; color:var(--text); margin-top:2px;">0 Receipts</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--success); letter-spacing:0.05em;">Total Amount</div>
+          <div id="tally-preview-amount" style="font-size:1.3rem; font-weight:700; color:var(--success); margin-top:2px;">&#8377; 0</div>
+        </div>
+      </div>
+
+      <!-- INSTRUCTIONS BOX -->
+      <div style="font-size:0.78rem; color:var(--text3); line-height:1.5;">
+        💡 <strong>How to import in Tally:</strong> Open your company in TallyPrime &gt; Press <kbd>Alt + O</kbd> (Import) &gt; Select <strong>Transactions</strong> &gt; Choose this XML file. Tally will auto-create missing ledgers and import all receipts.
+      </div>
+
+    </div>
+    <div class="modal-footer" style="padding:14px 24px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-tally-export')">Cancel</button>
+      <button class="btn btn-success" id="btn-download-tally-xml" onclick="generateAndDownloadTallyXML()" style="display:flex;align-items:center;gap:6px;font-weight:600;">
+        <span class="material-icons-round">download</span> Download Tally XML
+      </button>
     </div>
   </div>
 </div>
@@ -4659,6 +4682,13 @@ function doLogin(){
 var SUPABASE_URL = "https://bhfiyrorfxvabquxmeiv.supabase.co";
 var SUPABASE_KEY = "sb_publishable_woMsdVpSPa7mKfHOeGGK8Q_paTZlW3K";
 var _supabase = (typeof window.supabase !== 'undefined' && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+// Helper to determine if a receipt status represents a cancelled receipt
+function isReceiptCancelled(status) {
+  if (!status) return false;
+  var s = String(status).trim().toLowerCase();
+  return s === 'cancelled' || s.indexOf('cancel') !== -1;
+}
 
 // Helper to fetch all rows from any Supabase table bypassing 1,000-row PostgREST limits
 function supabaseFetchAll(table, selectFields, applyQuery) {
@@ -6145,7 +6175,7 @@ window.google = {
                 var updates = [];
                 for (var i = 0; i < ldgRows.length && remaining > 0; i++) {
                   var row = ldgRows[i];
-                  if ((row.status || '').toLowerCase() === 'cancelled') continue;
+                  if (isReceiptCancelled(row.status)) continue;
                   var bal = parseFloat(row.balance) || 0;
                   if (bal > 0) {
                     var hName = (row.head_name || '').toLowerCase();
@@ -6263,7 +6293,7 @@ window.google = {
                     remarks: remarks || ('Payment for ' + ldg.head_name),
                     collected_by: collectedBy || (window.currentUser ? window.currentUser.name : 'Admin'),
                     status: 'Active',
-                    recon_status: (paymentMode || '').toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'
+                    recon_status: (paymentMode || '').toLowerCase() === 'cash' ? 'Cash' : ((paymentMode || '').toLowerCase().indexOf('easebuzz') !== -1 ? 'Easebuzz Verified' : 'Unreconciled')
                   };
 
                   _supabase.from('fee_receipts').insert([receiptRow]).then(function() {
@@ -6356,7 +6386,7 @@ window.google = {
                     remarks: remarks || ('Consolidated: ' + headsPaid.join(', ')),
                     collected_by: collectedBy || (window.currentUser ? window.currentUser.name : 'Admin'),
                     status: 'Active',
-                    recon_status: (paymentMode || '').toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'
+                    recon_status: (paymentMode || '').toLowerCase() === 'cash' ? 'Cash' : ((paymentMode || '').toLowerCase().indexOf('easebuzz') !== -1 ? 'Easebuzz Verified' : 'Unreconciled')
                   };
 
                   _supabase.from('fee_receipts').insert([receiptRow]).then(function() {
@@ -6396,10 +6426,35 @@ window.google = {
             if (updatedData.feeMonth !== undefined) updateFields.fee_month = updatedData.feeMonth;
             if (updatedData.remarks !== undefined) updateFields.remarks = updatedData.remarks;
 
-            _supabase.from('fee_receipts').update(updateFields).eq('receipt_id', receiptId).then(function(res) {
-              if (res.error) failureCb(res.error);
-              else successCb({ success: true, message: 'Receipt updated successfully!' });
-            }).catch(failureCb);
+            // Step 1: fetch receipt to get app_id before updating
+            _supabase.from('fee_receipts').select('app_id').eq('receipt_id', receiptId).then(function(rcptRes) {
+              var appId = rcptRes.data && rcptRes.data[0] && rcptRes.data[0].app_id;
+
+              // Step 2: update the receipt fields
+              _supabase.from('fee_receipts').update(updateFields).eq('receipt_id', receiptId).then(function(res) {
+                if (res.error) return failureCb(res.error);
+
+                // Step 3: auto-recalculate the student's fee ledger head-wise based on ALL receipts
+                if (appId) {
+                  methods.recalculateStudentFeeLedger(appId, function(recalcRes) {
+                    if (recalcRes && recalcRes.success) {
+                      successCb({ success: true, message: 'Receipt updated and fee ledger recalculated successfully!' });
+                    } else {
+                      // Receipt was saved — just warn about recalc failure, don't block
+                      successCb({ success: true, message: 'Receipt updated. Note: ledger recalculation failed — ' + ((recalcRes && recalcRes.message) || 'unknown error') });
+                    }
+                  });
+                } else {
+                  successCb({ success: true, message: 'Receipt updated successfully!' });
+                }
+              }).catch(failureCb);
+            }).catch(function() {
+              // If fetch fails, still attempt plain update
+              _supabase.from('fee_receipts').update(updateFields).eq('receipt_id', receiptId).then(function(res) {
+                if (res.error) failureCb(res.error);
+                else successCb({ success: true, message: 'Receipt updated successfully!' });
+              }).catch(failureCb);
+            });
           },
 
           cancelFeeReceipt: function(receiptId, reason) {
@@ -6484,7 +6539,7 @@ window.google = {
             _supabase.from('fee_receipts').select('*').eq('receipt_id', cleanRcptId).then(function(rRes) {
               var rcpt = (rRes.data && rRes.data[0]);
               if (!rcpt) return failureCb(new Error('Receipt ' + cleanRcptId + ' not found.'));
-              if ((rcpt.status || '').toLowerCase() !== 'cancelled') {
+              if (!isReceiptCancelled(rcpt.status)) {
                 return failureCb(new Error('Receipt is not cancelled; nothing to restore.'));
               }
 
@@ -6592,10 +6647,6 @@ window.google = {
                 else failureCb(new Error((res && res.message) || 'Failed to settle all receipts'));
               });
             }
-          },
-
-          getHeadWiseOutstanding: function(academicYear) {
-            return failureCb(new Error('getHeadWiseOutstanding is only available via Google Apps Script. Please use the GAS web app.'));
           },
 
           // ── STUDENT DASHBOARD FOR STUDENT PORTAL ────────────────
@@ -7148,7 +7199,23 @@ window.google = {
                 rcptsData = rcptsData.filter(function(f) { return (f.app_id || '').toString().trim().toLowerCase() === cleanA; });
               }
               if (academicYear && academicYear !== 'All') {
-                rcptsData = rcptsData.filter(function(f) { return f.academic_year === academicYear; });
+                // Normalize helper: treat plain-year "2026" as matching "2026-27"
+                function _ayMatch(stored, expected) {
+                  if (!stored) return false;
+                  if (stored === expected) return true;
+                  // If stored is a plain 4-digit year (e.g. "2026"), derive its academic year
+                  var m = String(stored).match(/^(\d{4})$/);
+                  if (m) {
+                    var y = parseInt(m[1], 10);
+                    var derived = y + '-' + String(y + 1).slice(-2);
+                    if (derived === expected) return true;
+                    // Also handle June-rollover: if the receipt year is startYear of the academic year
+                    var m2 = String(expected).match(/^(\d{4})-(\d{2})$/);
+                    if (m2 && parseInt(m2[1], 10) === y) return true;
+                  }
+                  return false;
+                }
+                rcptsData = rcptsData.filter(function(f) { return _ayMatch(f.academic_year, academicYear); });
               }
 
               var list = rcptsData.map(function(f, i) {
@@ -7363,10 +7430,10 @@ window.google = {
           },
 
           getBankReconciliationReport: function(academicYear) {
-            supabaseFetchAll('fee_receipts', '*', function(q){ return q.neq('payment_mode', 'Cash').neq('status', 'Cancelled'); }).then(function(res) {
+            supabaseFetchAll('fee_receipts', '*', function(q){ return q.neq('payment_mode', 'Cash').not('status', 'ilike', 'cancel%'); }).then(function(res) {
               if (res.error) failureCb(res.error);
               else {
-                var rawData = (res.data || []).filter(function(f) { return f.status !== 'Cancelled'; });
+                var rawData = (res.data || []).filter(function(f) { return !isReceiptCancelled(f.status); });
                 if (academicYear && academicYear !== 'All') {
                   rawData = rawData.filter(function(f) {
                     var ay = f.academic_year || '';
@@ -7623,7 +7690,7 @@ window.google = {
               _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
               _supabase.from('fee_heads').select('*'),
               supabaseFetchAll('student_fee_ledger'),
-              supabaseFetchAll('fee_receipts', '*', function(q){ return q.neq('status', 'Cancelled'); })
+              supabaseFetchAll('fee_receipts')
             ]).then(function(results) {
               var students = results[0].data || [];
               var structures = results[1].data || [];
@@ -7634,7 +7701,7 @@ window.google = {
               }
               var allHeads = results[3].data || [];
               var allLedger = results[4].data || [];
-              var allReceipts = results[5].data || [];
+              var allReceipts = (results[5].data || []).filter(function(r) { return !isReceiptCancelled(r.status); });
 
               structures.forEach(function(s) {
                 s.collegeName = colMap[s.id] || colMap[s.structure_id] || 'All Colleges';
@@ -7736,7 +7803,7 @@ window.google = {
               _supabase.from('hostel_settings').select('*').eq('key', 'FEE_STRUCTURE_COLLEGES'),
               _supabase.from('fee_heads').select('*'),
               _supabase.from('student_fee_ledger').select('*').eq('app_id', cleanAppId),
-              _supabase.from('fee_receipts').select('*').eq('app_id', cleanAppId).neq('status', 'Cancelled'),
+              _supabase.from('fee_receipts').select('*').eq('app_id', cleanAppId),
               _supabase.from('rooms').select('room_number, room_type')
             ]).then(function(results) {
               var student = results[0].data;
@@ -7750,7 +7817,7 @@ window.google = {
               }
               var allHeads = results[3].data || [];
               var currentLedger = results[4].data || [];
-              var receipts = results[5].data || [];
+              var receipts = (results[5].data || []).filter(function(r) { return !isReceiptCancelled(r.status); });
               var rooms = results[6].data || [];
 
               var roomType = student.room_type || 'Classic Tripple';
@@ -8451,7 +8518,7 @@ window.google = {
               var hasRange = (fromMs !== null || toMs !== null);
 
               var filtered = fees.filter(function(f) {
-                if ((f.status || '').toLowerCase() === 'cancelled') return false;
+                if (isReceiptCancelled(f.status)) return false;
 
                 if (hasRange) {
                   var rMs = parseDateMs(f.rawReceiptDate || f.receiptDate);
@@ -9034,7 +9101,6 @@ function showPage(page){
     loadFeesBundleData(currentToken, Boolean(allFees && allFees.length > 0));
   } else if(page==='fee-audit'){
     loadFeeAudit();
-    populateHwYearFilter();
   } else if(page==='reports'){
     loadOccupancyReport();
   } else if(page==='settings'){
@@ -9059,7 +9125,13 @@ window.showToast = showToast;
 function setBtnLoading(id,v){var b=document.getElementById(id);if(!b)return;b.disabled=v;b.style.opacity=v?'0.6':'1';}
 function fmtMoney(n){return '\u20B9'+parseFloat(n||0).toLocaleString('en-IN');}
 function fmtMoneyLakh(n){var v=parseFloat(n||0);var inLakh=v/100000;return '\u20B9 '+inLakh.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})+' L';}
-function statusBadge(s){var c={Pending:'badge-pending',Approved:'badge-approved',Rejected:'badge-rejected',Active:'badge-active',Vacated:'badge-vacated',Paid:'badge-paid',Partial:'badge-partial',Inactive:'badge-inactive',Cancelled:'badge-rejected','Cancelled (Duplicate)':'badge-rejected','Disabled (Duplicate)':'badge-rejected','Disabled':'badge-rejected','Admission Cancelled':'badge-rejected'};return '<span class="badge '+(c[s]||'')+'">'+s+'</span>';}
+function statusBadge(s){
+  if (!s) return '';
+  var sLower = String(s).toLowerCase();
+  if (sLower.indexOf('cancel') !== -1) return '<span class="badge badge-rejected">'+s+'</span>';
+  var c={Pending:'badge-pending',Approved:'badge-approved',Rejected:'badge-rejected',Active:'badge-active',Vacated:'badge-vacated',Paid:'badge-paid',Partial:'badge-partial',Inactive:'badge-inactive',Cancelled:'badge-rejected','Cancelled (Duplicate)':'badge-rejected','Disabled (Duplicate)':'badge-rejected','Disabled':'badge-rejected','Admission Cancelled':'badge-rejected'};
+  return '<span class="badge '+(c[s]||'')+'">'+s+'</span>';
+}
 
 function showConfirm(opts){
   document.getElementById('confirm-title').textContent=opts.title||'Are you sure?';
@@ -9227,7 +9299,6 @@ function doLogin(){
   }
 }
 function doLogout(){currentUser=null;currentStudentData=null;showToast('Signed out.','info');showLogin();}
-window.doLogin = doLogin;
 function loadSettings(){
   google.script.run.withSuccessHandler(function(res){
     if(res.success) {
@@ -11011,25 +11082,15 @@ function renderSFD(){
       ? structuredEntries.filter(function(e){return e.status==='Paid';})
       : structuredEntries; // 'All Ledger' shows only structured
   // Summary — only from structured (fee-structure) entries
-  var totAmt      = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
-  var totPaid     = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
-  var totBal      = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
-  var paidCnt     = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
-  var pendCnt     = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
-  var customPaid  = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
-  // Partial payments: amount paid on entries that are NOT fully Paid yet
-  var partialPaid = structuredEntries
-    .filter(function(e){return e.status!=='Paid' && e.paidAmount>0;})
-    .reduce(function(s,e){return s+e.paidAmount;},0);
-  var fullyPaidAmt = structuredEntries
-    .filter(function(e){return e.status==='Paid';})
-    .reduce(function(s,e){return s+e.paidAmount;},0);
-  var paidBreakdown = partialPaid>0
-    ? '<span style="display:block;font-size:0.68rem;color:var(--text2);margin-top:3px;" title="'+fmtMoney(fullyPaidAmt)+' fully paid + '+fmtMoney(partialPaid)+' partial advance on pending entries">'+fmtMoney(fullyPaidAmt)+' fully paid + <span style="color:var(--warning);">'+fmtMoney(partialPaid)+' partial</span></span>'
-    : '';
+  var totAmt  = structuredEntries.reduce(function(s,e){return s+e.applicableAmount;},0);
+  var totPaid = structuredEntries.reduce(function(s,e){return s+e.paidAmount;},0);
+  var totBal  = structuredEntries.reduce(function(s,e){return s+e.balance;},0);
+  var paidCnt = structuredEntries.filter(function(e){return e.status==='Paid';}).length;
+  var pendCnt = structuredEntries.filter(function(e){return e.status!=='Paid';}).length;
+  var customPaid = customEntries.reduce(function(s,e){return s+e.paidAmount;},0);
   document.getElementById('sfd-summary').innerHTML=
     '<div style="background:rgba(124,58,237,0.1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Applicable</div><div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">'+fmtMoney(totAmt)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+structuredEntries.length+' entries</div></div>'
-    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+paidBreakdown+' </div></div>'
+    +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Total Paid</div><div style="font-size:1.4rem;font-weight:800;color:var(--success);">'+fmtMoney(totPaid)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+paidCnt+' paid entries'+(customPaid>0?' · <span style="color:var(--warning);" title="Extra receipts (not in fee structure): '+fmtMoney(customPaid)+'">+'+fmtMoney(customPaid)+' extra</span>':'')+' </div></div>'
     +'<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:var(--radius-sm);padding:14px 18px;"><div style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;font-weight:700;">Outstanding Balance</div><div style="font-size:1.4rem;font-weight:800;color:var(--danger);">'+fmtMoney(totBal)+'</div><div style="font-size:0.72rem;color:var(--text2);margin-top:2px;">'+pendCnt+' pending entries</div></div>';
   document.getElementById('sfd-total-balance').textContent=totBal>0?'Outstanding: '+fmtMoney(totBal):'✔ All fees cleared!';
   document.getElementById('sfd-total-balance').style.color=totBal>0?'var(--danger)':'var(--success)';
@@ -11436,133 +11497,6 @@ function exportAuditCsv() {
   showToast('Audit exported to CSV', 'success');
 }
 
-// ── HEAD-WISE OUTSTANDING FEE RECONCILIATION ─────────────────────────────────
-var _hwData = null;
-
-function populateHwYearFilter() {
-  var sel = document.getElementById('hw-year-filter');
-  if (!sel) return;
-  var years = {};
-  (allFees || []).forEach(function(f) { if (f.academicYear) years[f.academicYear] = true; });
-  if (activeAcademicYear) years[activeAcademicYear] = true;
-  var opts = '<option value="All">All Years</option>';
-  Object.keys(years).sort().forEach(function(y) {
-    opts += '<option value="' + escapeHtml(y) + '"' + (y === activeAcademicYear ? ' selected' : '') + '>' + escapeHtml(y) + '</option>';
-  });
-  sel.innerHTML = opts;
-}
-
-function loadHeadWiseOutstanding() {
-  var year = (document.getElementById('hw-year-filter') || {}).value || 'All';
-  var tbody = document.getElementById('hw-table-body');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text2)"><span class="material-icons-round" style="font-size:28px;animation:spin 1s linear infinite;display:block;margin-bottom:8px;color:var(--primary)">sync</span>Loading head-wise outstanding\u2026</td></tr>';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res.success) { showToast('Error: ' + res.message, 'error'); return; }
-      _hwData = res;
-      renderHeadWiseTable(res);
-      showToast('\u2705 Head-wise outstanding loaded \u2014 ' + res.rows.length + ' fee heads', 'success');
-    })
-    .withFailureHandler(function(err) {
-      showToast('Failed: ' + err.message, 'error');
-      var tb = document.getElementById('hw-table-body');
-      if (tb) tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--danger)">Error: ' + escapeHtml(err.message) + '</td></tr>';
-    })
-    .getHeadWiseOutstanding(year);
-}
-
-function renderHeadWiseTable(res) {
-  var tbody = document.getElementById('hw-table-body');
-  var tfoot = document.getElementById('hw-table-foot');
-  var statsRow = document.getElementById('hw-stats-row');
-  if (!tbody) return;
-  if (!res.rows || res.rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text2)">No fee ledger data found.</td></tr>';
-    return;
-  }
-  if (statsRow) { statsRow.style.display = 'grid'; statsRow.classList.remove('hidden'); }
-  var hwHeads = document.getElementById('hw-stat-heads');
-  var hwCollected = document.getElementById('hw-stat-collected');
-  var hwOutstanding = document.getElementById('hw-stat-outstanding');
-  if (hwHeads) hwHeads.textContent = res.rows.length;
-  if (hwCollected) hwCollected.textContent = fmtMoney(res.grandTotalPaid);
-  if (hwOutstanding) hwOutstanding.textContent = fmtMoney(res.grandTotalOutstanding);
-  if (tfoot) {
-    tfoot.style.display = '';
-    tfoot.classList.remove('hidden');
-    var pct = res.grandTotalApplicable > 0 ? Math.round((res.grandTotalPaid / res.grandTotalApplicable) * 100) : 0;
-    document.getElementById('hw-foot-applicable').textContent  = fmtMoney(res.grandTotalApplicable);
-    document.getElementById('hw-foot-collected').textContent   = fmtMoney(res.grandTotalPaid);
-    document.getElementById('hw-foot-outstanding').textContent = fmtMoney(res.grandTotalOutstanding);
-    document.getElementById('hw-foot-pct').textContent         = pct + '%';
-  }
-  var html = '';
-  res.rows.forEach(function(row, idx) {
-    var pct = row.totalApplicable > 0 ? Math.round((row.totalPaid / row.totalApplicable) * 100) : 0;
-    var pctColor = pct >= 90 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
-    var outColor = row.totalOutstanding > 0 ? 'var(--danger)' : 'var(--success)';
-    var pctBar = '<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + pctColor + ';border-radius:4px"></div></div><span style="font-size:0.78rem;font-weight:700;color:' + pctColor + '">' + pct + '%</span></div>';
-    html += '<tr>';
-    html += '<td style="color:var(--text3);font-size:0.8rem">' + (idx + 1) + '</td>';
-    html += '<td style="font-weight:700">' + escapeHtml(row.headName) + '</td>';
-    html += '<td style="text-align:right">' + row.studentCount + '</td>';
-    html += '<td style="text-align:right">' + fmtMoney(row.totalApplicable) + '</td>';
-    html += '<td style="text-align:right;color:var(--success);font-weight:600">' + fmtMoney(row.totalPaid) + '</td>';
-    html += '<td style="text-align:right;color:' + outColor + ';font-weight:700">' + fmtMoney(row.totalOutstanding) + '</td>';
-    html += '<td style="min-width:120px">' + pctBar + '</td>';
-    html += '<td><button class="btn btn-ghost btn-sm" onclick="showHwBreakdown(' + idx + ')" style="font-size:0.75rem;padding:4px 10px"><span class="material-icons-round" style="font-size:14px;vertical-align:middle">expand_more</span> Students</button></td>';
-    html += '</tr>';
-    html += '<tr id="hw-breakdown-' + idx + '" class="hidden" style="background:var(--bg2)">';
-    html += '<td colspan="8" style="padding:12px 20px">';
-    html += '<div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase">Student-wise breakdown: ' + escapeHtml(row.headName) + '</div>';
-    html += '<table style="width:100%;font-size:0.82rem"><thead><tr style="color:var(--text3)"><th style="text-align:left;padding:4px 8px">Student</th><th style="text-align:left;padding:4px 8px">Room</th><th style="text-align:left;padding:4px 8px">Month</th><th style="text-align:right;padding:4px 8px">Applicable</th><th style="text-align:right;padding:4px 8px">Paid</th><th style="text-align:right;padding:4px 8px">Outstanding</th><th style="text-align:left;padding:4px 8px">Status</th></tr></thead><tbody>';
-    (row.studentBreakdown || []).forEach(function(sb) {
-      var stOutColor = sb.outstanding > 0 ? 'var(--danger)' : 'var(--success)';
-      var stStatusColor = sb.status === 'Paid' ? 'var(--success)' : sb.status === 'Partial' ? 'var(--warning)' : 'var(--text2)';
-      html += '<tr style="border-top:1px solid var(--border)">';
-      html += '<td style="padding:4px 8px;font-weight:600">' + escapeHtml(sb.studentName || sb.appId) + '</td>';
-      html += '<td style="padding:4px 8px;color:var(--text2)">' + escapeHtml(sb.roomNumber || '-') + '</td>';
-      html += '<td style="padding:4px 8px;color:var(--text2)">' + escapeHtml(sb.month || '-') + '</td>';
-      html += '<td style="text-align:right;padding:4px 8px">' + fmtMoney(sb.applicable) + '</td>';
-      html += '<td style="text-align:right;padding:4px 8px;color:var(--success)">' + fmtMoney(sb.paid) + '</td>';
-      html += '<td style="text-align:right;padding:4px 8px;font-weight:700;color:' + stOutColor + '">' + fmtMoney(sb.outstanding) + '</td>';
-      html += '<td style="padding:4px 8px"><span style="font-size:0.72rem;font-weight:700;color:' + stStatusColor + '">' + escapeHtml(sb.status) + '</span></td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></td></tr>';
-  });
-  tbody.innerHTML = html;
-}
-
-function showHwBreakdown(idx) {
-  var row = document.getElementById('hw-breakdown-' + idx);
-  if (!row) return;
-  row.classList.toggle('hidden');
-}
-
-function exportHeadWiseCsv() {
-  if (!_hwData || !_hwData.rows || _hwData.rows.length === 0) {
-    showToast('Load the Head-wise report first before exporting.', 'error'); return;
-  }
-  var csv = 'Fee Head,Students,Applicable (Rs),Paid (Rs),Outstanding (Rs),Collection %\n';
-  _hwData.rows.forEach(function(r) {
-    var pct = r.totalApplicable > 0 ? Math.round((r.totalPaid / r.totalApplicable) * 100) : 0;
-    csv += ['"' + r.headName.replace(/"/g,'""') + '"', r.studentCount, r.totalApplicable, r.totalPaid, r.totalOutstanding, pct + '%'].join(',') + '\n';
-    (r.studentBreakdown || []).forEach(function(sb) {
-      csv += ['"  > ' + (sb.studentName||sb.appId).replace(/"/g,'""') + '"', '"' + (sb.roomNumber||'') + '"', '"' + (sb.month||'') + '"', sb.applicable, sb.paid, sb.outstanding, '"' + sb.status + '"'].join(',') + '\n';
-    });
-  });
-  csv += ['Grand Total','',_hwData.grandTotalApplicable,_hwData.grandTotalPaid,_hwData.grandTotalOutstanding,''].join(',');
-  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a'); a.href = url;
-  a.download = 'HeadWise_Outstanding_' + new Date().toISOString().slice(0,10) + '.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast('Head-wise outstanding exported to CSV', 'success');
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 function openCollectFromSFD(ledgerId){
 
   // Find entry in the current SFD entries
@@ -11701,38 +11635,60 @@ function openMultipleCollectFromSFD() {
       return;
     }
 
-    // ── Confirmation before saving ──
-    var totalAmt = finalPayments.reduce(function(sum, p) { return sum + p.amountPaid; }, 0);
-    var studentLabel = (_currentSfdName || 'Student');
-    showConfirm({
-      title: 'Confirm Fee Collection',
-      msg: 'Save receipt for ' + studentLabel + '?\n\nTotal: ' + fmtMoney(totalAmt) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
-      icon: 'payments',
-      iconColor: 'green',
-      okLabel: 'Yes, Save Receipt',
-      okClass: 'btn-success',
-      onConfirm: function() {
-        setBtnLoading('collect-confirm-btn', true);
-        google.script.run.withSuccessHandler(function(res) {
-          setBtnLoading('collect-confirm-btn', false);
-          if (res.success) {
-            closeModal('modal-collect');
-            showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
-            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
-            loadPendingFees();
-            loadFees();
-            viewReceipt(res.receiptId, res.receipt);
-          } else {
-            showToast('Error: ' + res.message, 'error');
-            openModal('modal-student-fee');
-          }
-        }).withFailureHandler(function(err) {
-          setBtnLoading('collect-confirm-btn', false);
-          showToast('Server error: ' + err.message, 'error');
-          openModal('modal-student-fee');
-        }).recordMultipleFeePayments(finalPayments, mode, txn, currentUser.name, remarks);
+    var totalToPay = finalPayments.reduce(function(acc, p){ return acc + p.amountPaid; }, 0);
+    var sName = _currentSfdName || 'Student';
+
+    var proceedSaveSFDMultiple = function(finalTxn, auditLogRemarks) {
+      var finalRemarks = remarks;
+      if (auditLogRemarks) {
+        finalRemarks = remarks ? (remarks + ' | ' + auditLogRemarks) : auditLogRemarks;
       }
-    });
+      setBtnLoading('collect-confirm-btn', true);
+      google.script.run.withSuccessHandler(function(res) {
+        setBtnLoading('collect-confirm-btn', false);
+        
+        if (res.success) {
+          closeModal('modal-collect');
+          showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
+          
+          viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+          loadPendingFees();
+          loadFees();
+          viewReceipt(res.receiptId, res.receipt);
+        } else {
+          showToast('Error: ' + res.message, 'error');
+          openModal('modal-student-fee');
+        }
+      }).withFailureHandler(function(err) {
+        setBtnLoading('collect-confirm-btn', false);
+        showToast('Server error: ' + err.message, 'error');
+        openModal('modal-student-fee');
+      }).recordMultipleFeePayments(finalPayments, mode, finalTxn || txn, (currentUser && currentUser.name) ? currentUser.name : 'Admin', finalRemarks);
+    };
+
+    if (isEasebuzzPaymentMode(mode)) {
+      verifyEasebuzzAndConfirm({
+        studentName: sName,
+        feeHead: 'Multiple Fee Heads (' + finalPayments.length + ')',
+        amount: totalToPay,
+        txnId: txn,
+        btnId: 'collect-confirm-btn',
+        btnText: '<span class="material-icons-round">check</span> Collect &amp; Save Receipt',
+        onConfirmed: function(vData) {
+          var vEasepayId = vData.easepayid || '';
+          var vTxnId = vData.txnid || txn;
+          var finalTxn = vEasepayId ? (vEasepayId + (vTxnId !== vEasepayId ? (' / ' + vTxnId) : '')) : vTxnId;
+          var auditLog = '[Easebuzz Verified: SUCCESS | EasepayID: ' + (vEasepayId || 'N/A') + ' | Ref: ' + vTxnId + ' | At: ' + (vData.verifiedAt || new Date().toISOString()) + ' | ConfirmedBy: ' + ((currentUser && currentUser.name) ? currentUser.name : 'Staff') + ']';
+          proceedSaveSFDMultiple(finalTxn, auditLog);
+        },
+        onDenied: function(reason) {
+          // Aborted cleanly
+        }
+      });
+      return;
+    }
+
+    proceedSaveSFDMultiple();
   };
   
   openModal('modal-collect');
@@ -11746,51 +11702,29 @@ function renderSFDReceipts(){
     return;
   }
   sortByLatest(_sfdReceipts, ['receiptDate', 'created_at'], 'receiptId');
-
-  // Active vs cancelled summary
-  var activeTotal    = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() !== 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
-  var cancelledTotal = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).reduce(function(s,f){ return s+(f.amountPaid||0); }, 0);
-  var cancelledCount = _sfdReceipts.filter(function(f){ return (f.status||'').toLowerCase() === 'cancelled'; }).length;
-  var summaryEl = document.getElementById('sfd-receipts-summary');
-  if (summaryEl) {
-    summaryEl.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">'
-      + '<div style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
-      + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Active Receipts Total</span>'
-      + '<span style="font-weight:800;color:var(--success);font-size:1rem;">' + fmtMoney(activeTotal) + '</span></div>'
-      + (cancelledTotal > 0
-        ? '<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:6px 14px;font-size:0.82rem;">'
-          + '<span style="color:var(--text3);font-size:0.68rem;font-weight:700;text-transform:uppercase;display:block;">Cancelled (' + cancelledCount + ')</span>'
-          + '<span style="font-weight:800;color:var(--danger);font-size:1rem;text-decoration:line-through;">' + fmtMoney(cancelledTotal) + '</span></div>'
-          + '<div style="font-size:0.75rem;color:var(--warning);display:flex;align-items:center;gap:4px;">'
-          + '<span class="material-icons-round" style="font-size:14px;">warning_amber</span>'
-          + 'Cancelled receipts shown below in grey \u2014 they do NOT count toward paid balance.</div>'
-        : '')
-      + '</div>';
-  }
-
   tbody.innerHTML = _sfdReceipts.map(function(f){
-    var isCancelled = (f.status || '').toLowerCase() === 'cancelled';
-    var rowStyle    = isCancelled ? ' style="opacity:0.5;background:rgba(239,68,68,0.04);"' : '';
-    var amtStyle    = isCancelled ? 'font-weight:700;color:var(--danger);text-decoration:line-through;' : 'font-weight:700;color:var(--success);';
+    var isCancelled = isReceiptCancelled(f.status);
     var actions = '<button class="btn btn-ghost btn-sm" onclick="viewReceipt(\''+f.receiptId+'\')" title="View Receipt Modal"><span class="material-icons-round" style="font-size:15px;">visibility</span></button> '
               + '<button class="btn btn-primary btn-sm" onclick="printFeeReceipt(\''+f.receiptId+'\')" title="Print Receipt"><span class="material-icons-round" style="font-size:15px;">print</span> Print</button> ';
-    if (f.status === 'Active') {
+    if (!isCancelled && (f.status === 'Active' || !f.status)) {
       actions += '<button class="btn btn-ghost btn-sm" onclick="openEditReceipt(\''+f.receiptId+'\')" title="Edit Receipt"><span class="material-icons-round" style="font-size:15px;">edit</span></button> '
               + '<button class="btn btn-danger btn-sm" onclick="doCancelReceipt(\''+f.receiptId+'\')" title="Cancel Receipt"><span class="material-icons-round" style="font-size:15px;">cancel</span></button>';
     } else if (isCancelled) {
       actions += '<button class="btn btn-sm" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.25);transition:opacity 0.15s;" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'" onclick="doRestoreReceipt(\''+f.receiptId+'\')" title="Restore this cancelled receipt"><span class="material-icons-round" style="font-size:14px;">restore</span> Restore</button>';
     }
-    return '<tr'+rowStyle+'>'
-      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">'
-        + f.receiptId
-        + (isCancelled ? ' <span style="font-size:0.6rem;background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:3px;padding:1px 5px;vertical-align:middle;">CANCELLED</span>' : '')
-        + '</td>'
+    var amtStyle = isCancelled
+      ? 'style="font-weight:700;color:var(--text3);text-decoration:line-through;"'
+      : 'style="font-weight:700;color:var(--success);"';
+    var rowStyle = isCancelled ? ' style="background:rgba(239,68,68,0.04);opacity:0.85;"' : '';
+    var displayStatus = isCancelled ? (f.remarks && f.remarks.toUpperCase().indexOf('CANCEL') !== -1 ? f.remarks : (f.status || 'Cancelled')) : (f.status || 'Active');
+    return '<tr' + rowStyle + '>'
+      + '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary-light);">' + f.receiptId + '</td>'
       + '<td>' + f.receiptDate + '</td>'
       + '<td><strong>' + f.feeType + '</strong></td>'
       + '<td>' + (f.feeMonth || '-') + ' ' + (f.feeYear || '') + '</td>'
-      + '<td style="' + amtStyle + '">' + fmtMoney(f.amountPaid) + '</td>'
+      + '<td ' + amtStyle + '>' + fmtMoney(f.amountPaid) + '</td>'
       + '<td>' + f.paymentMode + '</td>'
-      + '<td>' + statusBadge(f.status) + '</td>'
+      + '<td>' + statusBadge(displayStatus) + '</td>'
       + '<td style="white-space:nowrap;">' + actions + '</td>'
       + '</tr>';
   }).join('');
@@ -11873,7 +11807,7 @@ function doSaveEditReceipt(){
     setBtnLoading('edit-rcpt-save-btn', false);
     if (res.success) {
       closeModal('modal-edit-receipt');
-      showToast('Receipt updated successfully!', 'success');
+      showToast(res.message || 'Receipt updated and ledger recalculated!', 'success');
       if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId && typeof viewStudentFeeDetail === 'function') {
         viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
       }
@@ -11882,6 +11816,9 @@ function doSaveEditReceipt(){
       }
       if (typeof loadPendingFees === 'function') {
         loadPendingFees();
+      }
+      if (typeof loadAllotments === 'function') {
+        loadAllotments();
       }
     } else {
       showToast('Error: ' + res.message, 'error');
@@ -11931,7 +11868,6 @@ function doReverseLedgerPayment(ledgerId, headName, feeMonth) {
         return;
       }
       if (matchingReceipts.length > 0) {
-        // Cancel each matching receipt (this also reverses the ledger via cancelFeeReceipt)
         var cancelOps = matchingReceipts.map(function(r) {
           return new Promise(function(resolve, reject) {
             google.script.run
@@ -11954,7 +11890,6 @@ function doReverseLedgerPayment(ledgerId, headName, feeMonth) {
             showToast('Error reversing payment: ' + (err.message || err), 'error');
           });
       } else {
-        // No matching receipt — directly reset the ledger row
         _supabase.from('student_fee_ledger')
           .select('*').eq('ledger_id', ledgerId)
           .then(function(res) {
@@ -12183,86 +12118,122 @@ async function doAddReceipt() {
   var txnId = document.getElementById('fee-txn') ? document.getElementById('fee-txn').value : '';
   var remarks = document.getElementById('fee-remarks') ? document.getElementById('fee-remarks').value : '';
   var feeMonth = document.getElementById('fee-month') ? (document.getElementById('fee-month').value || 'N/A') : 'N/A';
-  var feeYear = document.getElementById('fee-year') ? (document.getElementById('fee-year').value || '2026') : '2026';
-  var receiptId = generateUniqueReceiptId(feeYear);
-  var todayIso = new Date().toISOString().split('T')[0];
-
-  showToast('Saving receipt and settling dues...', 'info');
-
-  try {
-    var receiptObj = {
-      receipt_id: receiptId,
-      app_id: appId,
-      student_name: sName,
-      room_number: roomNum,
-      fee_type: ft,
-      fee_month: feeMonth,
-      academic_year: feeYear,
-      amount_paid: amountPaid,
-      payment_mode: mode,
-      transaction_id: txnId,
-      receipt_date: todayIso,
-      collected_by: (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'Administrator',
-      remarks: remarks,
-      status: 'Active',
-      recon_status: mode.toLowerCase() === 'cash' ? 'Cash' : 'Unreconciled'
-    };
-
-    const { error: rcptErr } = await _supabase.from('fee_receipts').insert([receiptObj]);
-    if (rcptErr) {
-      showToast('Error saving receipt: ' + rcptErr.message, 'error');
-      return;
+  var _rawFeeYear = document.getElementById('fee-year') ? (document.getElementById('fee-year').value || '2026') : '2026';
+  // Convert plain year (e.g. "2026") → academic-year format (e.g. "2026-27") for consistency
+  var feeYear = (function(raw) {
+    var s = String(raw).trim();
+    if (/^\d{4}-\d{2}$/.test(s)) return s;          // already "2026-27"
+    var y = parseInt(s, 10);
+    if (!isNaN(y)) return y + '-' + String(y + 1).slice(-2); // "2026" → "2026-27"
+    return s;
+  })(_rawFeeYear);
+  var executeAddReceipt = async function(finalTxn, auditLogRemarks) {
+    var finalRemarks = remarks;
+    if (auditLogRemarks) {
+      finalRemarks = remarks ? (remarks + ' | ' + auditLogRemarks) : auditLogRemarks;
     }
+    var receiptId = generateUniqueReceiptId(feeYear);
+    var todayIso = new Date().toISOString().split('T')[0];
 
-    // Settle against matching dues in student_fee_ledger
-    const { data: ldgRows, error: ldgErr } = await _supabase.from('student_fee_ledger')
-      .select('*')
-      .eq('app_id', appId)
-      .neq('status', 'Paid')
-      .order('priority', { ascending: true });
+    showToast('Saving receipt and settling dues...', 'info');
 
-    if (!ldgErr && ldgRows && ldgRows.length > 0) {
-      var rem = amountPaid;
-      for (var i = 0; i < ldgRows.length; i++) {
-        var row = ldgRows[i];
-        if ((row.status || '').toLowerCase() === 'cancelled') continue;
-        var dueBal = parseFloat(row.balance) || parseFloat(row.balance_amount) || 0;
-        if (dueBal <= 0) continue;
+    try {
+      var receiptObj = {
+        receipt_id: receiptId,
+        app_id: appId,
+        student_name: sName,
+        room_number: roomNum,
+        fee_type: ft,
+        fee_month: feeMonth,
+        academic_year: feeYear,
+        amount_paid: amountPaid,
+        payment_mode: mode,
+        transaction_id: finalTxn || txnId,
+        receipt_date: todayIso,
+        collected_by: (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'Administrator',
+        remarks: finalRemarks,
+        status: 'Active',
+        recon_status: mode.toLowerCase() === 'cash' ? 'Cash' : (isEasebuzzPaymentMode(mode) ? 'Easebuzz Verified' : 'Unreconciled')
+      };
 
-        var pay = Math.min(rem, dueBal);
-        var currentPaid = parseFloat(row.paid_amount) || 0;
-        var newPaid = currentPaid + pay;
-        var appAmt = parseFloat(row.applicable_amount) || (dueBal + currentPaid);
-        var newBal = Math.max(0, appAmt - newPaid);
-        var newStatus = newBal <= 0 ? 'Paid' : 'Partial';
-
-        await _supabase.from('student_fee_ledger')
-          .update({
-            paid_amount: newPaid,
-            balance: newBal,
-            status: newStatus
-          })
-          .eq('ledger_id', row.ledger_id);
-
-        rem -= pay;
-        if (rem <= 0) break;
+      const { error: rcptErr } = await _supabase.from('fee_receipts').insert([receiptObj]);
+      if (rcptErr) {
+        showToast('Error saving receipt: ' + rcptErr.message, 'error');
+        return;
       }
+
+      // Settle against matching dues in student_fee_ledger
+      const { data: ldgRows, error: ldgErr } = await _supabase.from('student_fee_ledger')
+        .select('*')
+        .eq('app_id', appId)
+        .neq('status', 'Paid')
+        .order('priority', { ascending: true });
+
+      if (!ldgErr && ldgRows && ldgRows.length > 0) {
+        var rem = amountPaid;
+        for (var i = 0; i < ldgRows.length; i++) {
+          var row = ldgRows[i];
+          if ((row.status || '').toLowerCase() === 'cancelled') continue;
+          var dueBal = parseFloat(row.balance) || parseFloat(row.balance_amount) || 0;
+          if (dueBal <= 0) continue;
+
+          var pay = Math.min(rem, dueBal);
+          var currentPaid = parseFloat(row.paid_amount) || 0;
+          var newPaid = currentPaid + pay;
+          var appAmt = parseFloat(row.applicable_amount) || (dueBal + currentPaid);
+          var newBal = Math.max(0, appAmt - newPaid);
+          var newStatus = newBal <= 0 ? 'Paid' : 'Partial';
+
+          await _supabase.from('student_fee_ledger')
+            .update({
+              paid_amount: newPaid,
+              balance: newBal,
+              status: newStatus
+            })
+            .eq('ledger_id', row.ledger_id);
+
+          rem -= pay;
+          if (rem <= 0) break;
+        }
+      }
+
+      showToast('✅ Receipt saved! ID: ' + receiptId, 'success');
+      ['fee-type', 'fee-amount', 'fee-txn', 'fee-remarks'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      if (typeof loadFees === 'function') loadFees();
+      if (typeof loadPendingFees === 'function') loadPendingFees();
+      if (typeof loadAllotments === 'function') loadAllotments();
+      if (typeof loadDashboard === 'function') loadDashboard();
+      if (typeof viewReceipt === 'function') viewReceipt(receiptId, receiptObj);
+
+    } catch (err) {
+      showToast('Error saving receipt: ' + err.message, 'error');
     }
+  };
 
-    showToast('✅ Receipt saved! ID: ' + receiptId, 'success');
-    ['fee-type', 'fee-amount', 'fee-txn', 'fee-remarks'].forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.value = '';
+  if (isEasebuzzPaymentMode(mode)) {
+    verifyEasebuzzAndConfirm({
+      studentName: sName,
+      feeHead: ft,
+      amount: amountPaid,
+      txnId: txnId,
+      onConfirmed: function(vData) {
+        var vEasepayId = vData.easepayid || '';
+        var vTxnId = vData.txnid || txnId;
+        var finalTxn = vEasepayId ? (vEasepayId + (vTxnId !== vEasepayId ? (' / ' + vTxnId) : '')) : vTxnId;
+        var auditLog = '[Easebuzz Verified: SUCCESS | EasepayID: ' + (vEasepayId || 'N/A') + ' | Ref: ' + vTxnId + ' | At: ' + (vData.verifiedAt || new Date().toISOString()) + ' | ConfirmedBy: ' + ((currentUser && currentUser.name) ? currentUser.name : 'Staff') + ']';
+        executeAddReceipt(finalTxn, auditLog);
+      },
+      onDenied: function(reason) {
+        // Aborted cleanly
+      }
     });
-    if (typeof loadFees === 'function') loadFees();
-    if (typeof loadPendingFees === 'function') loadPendingFees();
-    if (typeof loadAllotments === 'function') loadAllotments();
-    if (typeof loadDashboard === 'function') loadDashboard();
-    if (typeof viewReceipt === 'function') viewReceipt(receiptId, receiptObj);
-
-  } catch (err) {
-    showToast('Error saving receipt: ' + err.message, 'error');
+    return;
   }
+
+  executeAddReceipt();
 }
 
 function viewReceipt(receiptId, directReceiptObj){
@@ -13888,40 +13859,62 @@ function doCollectPayment(ledgerId){
   if(!mode){showToast('Please select a payment mode.','error');return;}
   var txn=document.getElementById('collect-txn').value.trim(),remarks=document.getElementById('collect-remarks').value.trim();
 
-  // ── Confirmation before saving ──
-  var studentLabel = (_currentSfdName || 'Student');
-  showConfirm({
-    title: 'Confirm Fee Collection',
-    msg: 'Save receipt for ' + studentLabel + '?\n\nAmount: ' + fmtMoney(amount) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
-    icon: 'payments',
-    iconColor: 'green',
-    okLabel: 'Yes, Save Receipt',
-    okClass: 'btn-success',
-    onConfirm: function() {
-      setBtnLoading('collect-confirm-btn',true);
-      google.script.run.withSuccessHandler(function(res){
-        setBtnLoading('collect-confirm-btn',false);
-        if(res.success){
-          closeModal('modal-collect');
-          showToast('Payment recorded! Receipt: '+res.receiptId+' | Balance: '+fmtMoney(res.newBalance),'success');
-          loadPendingFees();
-          loadFees();
-          if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
-            viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
-          }
-          viewReceipt(res.receiptId, res.receipt);
-        }
-        else {
-          showToast('Error: '+res.message,'error');
-          if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
-        }
-      }).withFailureHandler(function(err){
-        setBtnLoading('collect-confirm-btn',false);
-        showToast('Server error: '+err.message,'error');
-        if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
-      }).recordFeePayment(ledgerId,amount,mode,txn,currentUser.name,remarks);
+  var entry = (allPendingFees || []).find(function(e){ return e.ledgerId === ledgerId; });
+  var sName = entry ? entry.studentName : (_currentSfdName || 'Student');
+  var hName = entry ? entry.headName : 'Hostel Fee';
+
+  var proceedSave = function(finalTxn, auditLogRemarks) {
+    var finalRemarks = remarks;
+    if (auditLogRemarks) {
+      finalRemarks = remarks ? (remarks + ' | ' + auditLogRemarks) : auditLogRemarks;
     }
-  });
+    setBtnLoading('collect-confirm-btn',true);
+    google.script.run.withSuccessHandler(function(res){
+      setBtnLoading('collect-confirm-btn',false);
+      if(res.success){
+        closeModal('modal-collect');
+        showToast('Payment recorded! Receipt: '+res.receiptId+' | Balance: '+fmtMoney(res.newBalance),'success');
+        loadPendingFees();
+        loadFees();
+        if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
+          viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+        }
+        viewReceipt(res.receiptId, res.receipt);
+      }
+      else {
+        showToast('Error: '+res.message,'error');
+        if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
+      }
+    }).withFailureHandler(function(err){
+      setBtnLoading('collect-confirm-btn',false);
+      showToast('Server error: '+err.message,'error');
+      if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) openModal('modal-student-fee');
+    }).recordFeePayment(ledgerId, amount, mode, finalTxn || txn, (currentUser && currentUser.name) ? currentUser.name : 'Admin', finalRemarks);
+  };
+
+  if (isEasebuzzPaymentMode(mode)) {
+    verifyEasebuzzAndConfirm({
+      studentName: sName,
+      feeHead: hName,
+      amount: amount,
+      txnId: txn,
+      btnId: 'collect-confirm-btn',
+      btnText: '<span class="material-icons-round">check</span> Collect &amp; Save Receipt',
+      onConfirmed: function(vData) {
+        var vEasepayId = vData.easepayid || '';
+        var vTxnId = vData.txnid || txn;
+        var finalTxn = vEasepayId ? (vEasepayId + (vTxnId !== vEasepayId ? (' / ' + vTxnId) : '')) : vTxnId;
+        var auditLog = '[Easebuzz Verified: SUCCESS | EasepayID: ' + (vEasepayId || 'N/A') + ' | Ref: ' + vTxnId + ' | At: ' + (vData.verifiedAt || new Date().toISOString()) + ' | ConfirmedBy: ' + ((currentUser && currentUser.name) ? currentUser.name : 'Staff') + ']';
+        proceedSave(finalTxn, auditLog);
+      },
+      onDenied: function(reason) {
+        // Cancelled or denied - abort cleanly
+      }
+    });
+    return;
+  }
+
+  proceedSave();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -13929,6 +13922,160 @@ function doCollectPayment(ledgerId){
 // ─────────────────────────────────────────────────────────────
 var _currentEasebuzzLedger = null;
 var _currentEasebuzzLinkData = null;
+
+function isEasebuzzPaymentMode(mode) {
+  if (!mode) return false;
+  var m = mode.toString().toLowerCase().trim();
+  return m.indexOf('easebuzz') !== -1;
+}
+
+var _ebConfirmCallbacks = null;
+
+function openEasebuzzConfirmModal(params) {
+  _ebConfirmCallbacks = params;
+
+  var elStudent = document.getElementById('eb-confirm-student');
+  var elAmount = document.getElementById('eb-confirm-amount');
+  var elFeeHead = document.getElementById('eb-confirm-feehead');
+  var elTxnId = document.getElementById('eb-confirm-txnid');
+  var elEasepayId = document.getElementById('eb-confirm-easepayid');
+  var elStatus = document.getElementById('eb-confirm-status');
+
+  if (elStudent) elStudent.textContent = params.studentName || '-';
+  if (elAmount) elAmount.textContent = fmtMoney(params.amount || 0);
+  if (elFeeHead) elFeeHead.textContent = params.feeHead || '-';
+  if (elTxnId) elTxnId.textContent = params.txnId || '-';
+  if (elEasepayId) elEasepayId.textContent = params.easepayid || '-';
+  if (elStatus) {
+    elStatus.innerHTML = '<span class="material-icons-round" style="font-size:16px;color:#059669;vertical-align:middle;margin-right:4px;">check_circle</span> <span style="color:#059669;font-weight:700;">CONFIRMED / SUCCESS</span>';
+  }
+
+  var yesBtn = document.getElementById('eb-confirm-yes-btn');
+  var noBtn = document.getElementById('eb-confirm-no-btn');
+  var closeBtn = document.getElementById('eb-confirm-close-btn');
+
+  if (yesBtn) {
+    yesBtn.onclick = function() {
+      closeModal('modal-easebuzz-confirm');
+      var cb = _ebConfirmCallbacks;
+      _ebConfirmCallbacks = null;
+      if (cb && typeof cb.onYes === 'function') {
+        cb.onYes();
+      }
+    };
+  }
+
+  var cancelAction = function() {
+    closeModal('modal-easebuzz-confirm');
+    var cb = _ebConfirmCallbacks;
+    _ebConfirmCallbacks = null;
+    if (cb && typeof cb.onNo === 'function') {
+      cb.onNo();
+    }
+  };
+
+  if (noBtn) noBtn.onclick = cancelAction;
+  if (closeBtn) closeBtn.onclick = cancelAction;
+
+  openModal('modal-easebuzz-confirm');
+}
+
+function verifyEasebuzzAndConfirm(options) {
+  var studentName = options.studentName || 'Student';
+  var feeHead = options.feeHead || 'Hostel Fee';
+  var amount = parseFloat(options.amount) || 0;
+  var txnId = (options.txnId || '').toString().trim();
+  var onConfirmed = options.onConfirmed;
+  var onDenied = options.onDenied;
+  var btnId = options.btnId;
+  var btnText = options.btnText || '<span class="material-icons-round">check</span> Collect &amp; Save Receipt';
+
+  if (!txnId) {
+    if (btnId) setBtnLoading(btnId, false);
+    showToast('⚠️ Easebuzz Transaction ID / Reference is strictly required to verify payment. Please enter the Transaction ID.', 'error');
+    if (onDenied) onDenied('Missing transaction ID');
+    return;
+  }
+
+  if (amount <= 0) {
+    if (btnId) setBtnLoading(btnId, false);
+    showToast('Please specify a valid payment amount greater than zero.', 'error');
+    if (onDenied) onDenied('Invalid amount');
+    return;
+  }
+
+  if (btnId) {
+    var btnEl = document.getElementById(btnId);
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Verifying with Easebuzz API...';
+    }
+  }
+
+  var cfg = getSavedEasebuzzConfig();
+
+  fetch('/api/easebuzz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'check_status',
+      env: cfg.env || 'production',
+      merchantKey: cfg.merchantKey || cfg.appId || 'FRHPPBX6RF',
+      salt: cfg.salt || cfg.secretKey || '45UDY802LV',
+      txnid: txnId,
+      linkId: txnId,
+      amount: amount
+    })
+  }).then(function(res) {
+    return res.json();
+  }).then(function(data) {
+    if (btnId) {
+      var btnEl = document.getElementById(btnId);
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = btnText;
+      }
+    }
+
+    var isActuallyPaid = data && data.success && data.isPaid && (data.linkStatus === 'PAID' || data.linkStatus === 'SUCCESS');
+    if (!isActuallyPaid) {
+      var failMsg = (data && data.message) ? data.message : 'Payment not confirmed as collected in Easebuzz.';
+      var statusBadge = (data && data.linkStatus) ? data.linkStatus : 'UNVERIFIED';
+      showToast('❌ Payment verification failed in Easebuzz (' + statusBadge + '): ' + failMsg + ' Receipt cannot be generated.', 'error');
+      if (onDenied) onDenied(failMsg);
+      return;
+    }
+
+    // Step 2: API check passed! Now prompt user with mandatory warning confirmation dialog
+    openEasebuzzConfirmModal({
+      studentName: studentName,
+      feeHead: feeHead,
+      amount: amount,
+      txnId: txnId,
+      easepayid: data.easepayid || data.orderId || '-',
+      status: data.linkStatus || 'SUCCESS',
+      verifiedData: data,
+      onYes: function() {
+        if (onConfirmed) onConfirmed(data);
+      },
+      onNo: function() {
+        showToast('Receipt generation aborted by user. Money receipt was NOT generated.', 'warning');
+        if (onDenied) onDenied('User denied confirmation');
+      }
+    });
+
+  }).catch(function(err) {
+    if (btnId) {
+      var btnEl = document.getElementById(btnId);
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = btnText;
+      }
+    }
+    showToast('❌ Network error verifying payment with Easebuzz: ' + err.message + '. Receipt cannot be generated.', 'error');
+    if (onDenied) onDenied(err.message);
+  });
+}
 
 function getSavedEasebuzzConfig() {
   try {
@@ -14207,7 +14354,9 @@ function openEasebuzzFromCollectModal() {
     if (!firstLedgerId && lid) firstLedgerId = lid;
     var e = (_sfdEntries || []).find(function(x){ return x.ledgerId === lid; });
     if (e && e.headName) headNames.push(e.headName);
-    if (lid && val > 0) multiPayments.push({ ledgerId: lid, amountPaid: val });
+    if (lid && val > 0) {
+      multiPayments.push({ ledgerId: lid, amountPaid: val });
+    }
   });
 
   if (totalAmt <= 0) {
@@ -14234,7 +14383,7 @@ function openEasebuzzFromCollectModal() {
     applicableAmount: totalAmt,
     balance       : totalAmt,
     academicYear  : activeAcademicYear || '2026-27',
-    multiPayments : multiPayments.length > 1 ? multiPayments : null
+    multiplePayments: multiPayments
   };
   _currentEasebuzzLinkData = null;
 
@@ -14328,7 +14477,8 @@ function doGenerateEasebuzzLink() {
         ledgerId: _currentEasebuzzLedger.ledgerId,
         studentName: _currentEasebuzzLedger.studentName,
         phone: phone,
-        purpose: purpose
+        purpose: purpose,
+        multiplePayments: _currentEasebuzzLedger.multiplePayments || null
       };
 
       document.getElementById('cf-generated-url').value = pUrl;
@@ -14485,82 +14635,99 @@ function doCheckEasebuzzStatus() {
       checkBtn.innerHTML = '<span class="material-icons-round">sync</span> Verify Payment &amp; Auto-Save Receipt';
     }
 
-    if (data.success) {
-      if (data.isPaid || data.linkStatus === 'PAID' || data.linkStatus === 'SUCCESS') {
-        document.getElementById('cf-status-badge').textContent = '✔ Payment Verified (PAID)';
-        document.getElementById('cf-status-badge').style.background = '#D1FAE5';
-        document.getElementById('cf-status-badge').style.color = '#065F46';
+    if (data.success && (data.isPaid || data.linkStatus === 'PAID' || data.linkStatus === 'SUCCESS')) {
+      document.getElementById('cf-status-badge').textContent = '✔ Payment Verified (PAID)';
+      document.getElementById('cf-status-badge').style.background = '#D1FAE5';
+      document.getElementById('cf-status-badge').style.color = '#065F46';
 
-        showToast('Payment verified successfully on Easebuzz! Recording receipt in database...', 'success');
+      var txnId = data.easepayid || data.orderId || ('EB_' + activeTxnId);
+      var paidAmt = parseFloat(data.amountPaid) || _currentEasebuzzLinkData.amount;
+      var sName = _currentEasebuzzLinkData.studentName || 'Student';
+      var fHead = _currentEasebuzzLedger ? _currentEasebuzzLedger.headName : 'Hostel Fee';
 
-        var txnId = data.easepayid || data.orderId || ('EB_' + activeTxnId);
-        var paidAmt = parseFloat(data.amountPaid) || _currentEasebuzzLinkData.amount;
-        var remarks = 'Paid online via Easebuzz Payment Link (' + activeTxnId + ')';
+      // Mandatory User Confirmation Warning Modal before committing receipt
+      openEasebuzzConfirmModal({
+        studentName: sName,
+        feeHead: fHead,
+        amount: paidAmt,
+        txnId: activeTxnId,
+        easepayid: data.easepayid || data.orderId || '-',
+        status: data.linkStatus || 'SUCCESS',
+        verifiedData: data,
+        onYes: function() {
+          showToast('Payment verified & confirmed! Recording receipt in database...', 'success');
 
-        var _successCb = function(res){
-          if (res.success) {
-            closeModal('modal-cashfree-link');
-            showToast('✅ Payment recorded! Receipt ID: ' + res.receiptId, 'success');
-            loadPendingFees();
-            loadFees();
-            if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
-              viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+          var verifiedTime = data.verifiedAt || new Date().toISOString();
+          var finalRemarks = 'Paid online via Easebuzz Payment Link (' + activeTxnId + ') | [Easebuzz Verified: SUCCESS | EasepayID: ' + (data.easepayid || 'N/A') + ' | Ref: ' + activeTxnId + ' | At: ' + verifiedTime + ' | ConfirmedBy: ' + ((currentUser && currentUser.name) ? currentUser.name : 'Staff') + ']';
+
+          var onRecordSuccess = function(res){
+            if (res.success) {
+              closeModal('modal-cashfree-link');
+              showToast('✅ Payment recorded! Receipt ID: ' + res.receiptId, 'success');
+              loadPendingFees();
+              loadFees();
+              if (typeof _currentSfdAppId !== 'undefined' && _currentSfdAppId) {
+                viewStudentFeeDetail(_currentSfdAppId, _currentSfdName, _currentSfdRoom, _currentSfdType, _currentSfdDate);
+              }
+              viewReceipt(res.receiptId, res.receipt);
+
+              // Automatically trigger WhatsApp receipt confirmation
+              try {
+                sendReceiptOnWhatsApp(res.receipt || {
+                  receiptId: res.receiptId,
+                  amountPaid: paidAmt,
+                  studentName: _currentEasebuzzLinkData.studentName,
+                  feeType: _currentEasebuzzLedger ? _currentEasebuzzLedger.headName : 'Hostel Fee',
+                  transactionId: txnId,
+                  paymentMode: 'Online (Easebuzz)'
+                }, _currentEasebuzzLinkData.phone);
+              } catch(waErr) {
+                console.warn('WhatsApp receipt trigger:', waErr);
+              }
+
+            } else {
+              showToast('Error recording fee in database: ' + res.message, 'error');
             }
-            viewReceipt(res.receiptId, res.receipt);
+          };
 
-            // Automatically trigger WhatsApp receipt confirmation
-            try {
-              sendReceiptOnWhatsApp(res.receipt || {
-                receiptId: res.receiptId,
-                amountPaid: paidAmt,
-                studentName: _currentEasebuzzLinkData.studentName,
-                feeType: _currentEasebuzzLedger ? _currentEasebuzzLedger.headName : 'Hostel Fee',
-                transactionId: txnId,
-                paymentMode: 'Online (Easebuzz)'
-              }, _currentEasebuzzLinkData.phone);
-            } catch(waErr) {
-              console.warn('WhatsApp receipt trigger:', waErr);
-            }
+          var onRecordFailure = function(err){
+            showToast('Database error: ' + err.message, 'error');
+          };
 
-          } else {
-            showToast('Error recording fee in database: ' + res.message, 'error');
-          }
-        };
-        var _failureCb = function(err){
-          showToast('Database error: ' + err.message, 'error');
-        };
+          var multPayments = (_currentEasebuzzLedger && _currentEasebuzzLedger.multiplePayments && _currentEasebuzzLedger.multiplePayments.length > 1)
+            ? _currentEasebuzzLedger.multiplePayments
+            : ((_currentEasebuzzLinkData && _currentEasebuzzLinkData.multiplePayments && _currentEasebuzzLinkData.multiplePayments.length > 1) ? _currentEasebuzzLinkData.multiplePayments : null);
 
-        // Multi-head payment: use recordMultipleFeePayments so each head's balance is checked individually
-        var multiPmts = _currentEasebuzzLedger && _currentEasebuzzLedger.multiPayments;
-        if (multiPmts && multiPmts.length > 1) {
-          google.script.run
-            .withSuccessHandler(_successCb)
-            .withFailureHandler(_failureCb)
-            .recordMultipleFeePayments(
-              multiPmts,
+          if (multPayments) {
+            google.script.run.withSuccessHandler(onRecordSuccess).withFailureHandler(onRecordFailure).recordMultipleFeePayments(
+              multPayments,
               'Online (Easebuzz)',
               txnId,
               (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
-              remarks
+              finalRemarks
             );
-        } else {
-          google.script.run
-            .withSuccessHandler(_successCb)
-            .withFailureHandler(_failureCb)
-            .recordFeePayment(
+          } else {
+            google.script.run.withSuccessHandler(onRecordSuccess).withFailureHandler(onRecordFailure).recordFeePayment(
               _currentEasebuzzLinkData.ledgerId,
               paidAmt,
               'Online (Easebuzz)',
               txnId,
               (currentUser && currentUser.name) ? currentUser.name : 'Easebuzz System',
-              remarks
+              finalRemarks
             );
+          }
+        },
+        onNo: function() {
+          showToast('Receipt generation cancelled by user. Money receipt was NOT generated.', 'warning');
         }
+      });
 
-      } else {
-        document.getElementById('cf-status-badge').textContent = 'Status: ' + (data.linkStatus || 'PENDING');
-        showToast('Payment status is ' + (data.linkStatus || 'PENDING') + '. Please ask the parent to complete payment.', 'warning');
-      }
+    } else if (data.linkStatus || data.success) {
+      document.getElementById('cf-status-badge').textContent = 'Status: ' + (data.linkStatus || 'PENDING');
+      document.getElementById('cf-status-badge').style.background = '#FEE2E2';
+      document.getElementById('cf-status-badge').style.color = '#991B1B';
+      var failMsg = data.message || ('Payment status in Easebuzz is ' + (data.linkStatus || 'PENDING') + '. Funds have not been collected.');
+      showToast('❌ ' + failMsg, 'warning');
     } else {
       showToast('Failed to check status: ' + (data.message || 'Unknown error'), 'error');
     }
@@ -14765,37 +14932,59 @@ function doCollectMultiplePayments() {
     showToast("Please specify at least one payment amount greater than zero.", "error");
     return;
   }
-  
-  // ── Confirmation before saving ──
-  var totalAmt = payments.reduce(function(sum, p) { return sum + p.amountPaid; }, 0);
-  var studentLabel = (_currentSfdName || 'Student');
-  showConfirm({
-    title: 'Confirm Fee Collection',
-    msg: 'Save receipt for ' + studentLabel + '?\n\nTotal: ' + fmtMoney(totalAmt) + '  |  Mode: ' + mode + (txn ? '\nRef: ' + txn : '') + '\n\nThis action cannot be undone.',
-    icon: 'payments',
-    iconColor: 'green',
-    okLabel: 'Yes, Save Receipt',
-    okClass: 'btn-success',
-    onConfirm: function() {
-      setBtnLoading('collect-confirm-btn', true);
-      google.script.run.withSuccessHandler(function(res) {
-        setBtnLoading('collect-confirm-btn', false);
-        
-        if (res.success) {
-          closeModal('modal-collect');
-          showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
-          loadPendingFees();
-          loadFees();
-          viewReceipt(res.receiptId, res.receipt);
-        } else {
-          showToast('Error: ' + res.message, 'error');
-        }
-      }).withFailureHandler(function(err) {
-        setBtnLoading('collect-confirm-btn', false);
-        showToast('Server error: ' + err.message, 'error');
-      }).recordMultipleFeePayments(payments, mode, txn, currentUser.name, remarks);
+
+  var totalToPay = payments.reduce(function(acc, p){ return acc + p.amountPaid; }, 0);
+  var sName = 'Student';
+  var anyEntry = (allPendingFees || []).find(function(e){ return e.ledgerId === payments[0].ledgerId; });
+  if (anyEntry) sName = anyEntry.studentName || sName;
+
+  var proceedSaveMultiple = function(finalTxn, auditLogRemarks) {
+    var finalRemarks = remarks;
+    if (auditLogRemarks) {
+      finalRemarks = remarks ? (remarks + ' | ' + auditLogRemarks) : auditLogRemarks;
     }
-  });
+    setBtnLoading('collect-confirm-btn', true);
+    google.script.run.withSuccessHandler(function(res) {
+      setBtnLoading('collect-confirm-btn', false);
+      
+      if (res.success) {
+        closeModal('modal-collect');
+        showToast('Consolidated payment recorded! Receipt: ' + res.receiptId + ' | Total: ' + fmtMoney(res.totalPaid), 'success');
+        loadPendingFees();
+        loadFees();
+        viewReceipt(res.receiptId, res.receipt);
+      } else {
+        showToast('Error: ' + res.message, 'error');
+      }
+    }).withFailureHandler(function(err) {
+      setBtnLoading('collect-confirm-btn', false);
+      showToast('Server error: ' + err.message, 'error');
+    }).recordMultipleFeePayments(payments, mode, finalTxn || txn, (currentUser && currentUser.name) ? currentUser.name : 'Admin', finalRemarks);
+  };
+
+  if (isEasebuzzPaymentMode(mode)) {
+    verifyEasebuzzAndConfirm({
+      studentName: sName,
+      feeHead: 'Multiple Fee Heads (' + payments.length + ')',
+      amount: totalToPay,
+      txnId: txn,
+      btnId: 'collect-confirm-btn',
+      btnText: '<span class="material-icons-round">check</span> Collect &amp; Save Receipt',
+      onConfirmed: function(vData) {
+        var vEasepayId = vData.easepayid || '';
+        var vTxnId = vData.txnid || txn;
+        var finalTxn = vEasepayId ? (vEasepayId + (vTxnId !== vEasepayId ? (' / ' + vTxnId) : '')) : vTxnId;
+        var auditLog = '[Easebuzz Verified: SUCCESS | EasepayID: ' + (vEasepayId || 'N/A') + ' | Ref: ' + vTxnId + ' | At: ' + (vData.verifiedAt || new Date().toISOString()) + ' | ConfirmedBy: ' + ((currentUser && currentUser.name) ? currentUser.name : 'Staff') + ']';
+        proceedSaveMultiple(finalTxn, auditLog);
+      },
+      onDenied: function(reason) {
+        // Aborted cleanly
+      }
+    });
+    return;
+  }
+
+  proceedSaveMultiple();
 }
 
 
@@ -14909,7 +15098,8 @@ function renderFeeReceipts(){
   var reconFilter = reconFilterEl ? reconFilterEl.value : 'All';
   
   var filtered = allFees.filter(function(f){
-    var matchStatus = (stFilter === 'All') || ((f.status || 'Active').toLowerCase() === stFilter.toLowerCase());
+    var isCanc = isReceiptCancelled(f.status);
+    var matchStatus = (stFilter === 'All') || (stFilter.toLowerCase() === 'cancelled' ? isCanc : (!isCanc && (f.status || 'Active').toLowerCase() === stFilter.toLowerCase()));
     if (!matchStatus) return false;
 
     var matchYear = (yrFilter === 'All') || (f.academicYear === yrFilter) || (!f.academicYear);
@@ -14955,7 +15145,7 @@ function renderFeeReceipts(){
     return;
   }
   tbody.innerHTML = filtered.map(function(f){
-    var isCancelled = (f.status || '').toLowerCase() === 'cancelled';
+    var isCancelled = isReceiptCancelled(f.status);
     var isCash = (f.paymentMode || '').toLowerCase() === 'cash';
     var isReconciled = (f.reconStatus || '').toLowerCase() === 'reconciled';
 
@@ -14998,6 +15188,236 @@ function renderFeeReceipts(){
       + '<td style="white-space:nowrap;">' + actions + '</td>'
       + '</tr>';
   }).join('');
+}
+
+// ── TALLY XML EXPORT ENGINE (Auto-creates Masters for Fee Heads & Banks) ──
+function escapeTallyXml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function openTallyExportModal() {
+  var now = new Date();
+  var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  var pad = function(n) { return String(n).padStart(2, '0'); };
+  var fromStr = firstDay.getFullYear() + '-' + pad(firstDay.getMonth() + 1) + '-' + pad(firstDay.getDate());
+  var toStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+  var fromEl = document.getElementById('tally-from-date');
+  var toEl = document.getElementById('tally-to-date');
+  if (fromEl && !fromEl.value) fromEl.value = fromStr;
+  if (toEl && !toEl.value) toEl.value = toStr;
+
+  updateTallyExportPreview();
+  openModal('modal-tally-export');
+}
+
+function getFilteredTallyReceipts() {
+  if (!allFees || allFees.length === 0) return [];
+  var fromDate = document.getElementById('tally-from-date') ? document.getElementById('tally-from-date').value : '';
+  var toDate = document.getElementById('tally-to-date') ? document.getElementById('tally-to-date').value : '';
+  var modeFilter = document.getElementById('tally-mode-filter') ? document.getElementById('tally-mode-filter').value : 'All';
+  var statusFilter = document.getElementById('tally-status-filter') ? document.getElementById('tally-status-filter').value : 'Active';
+
+  return allFees.filter(function(f) {
+    var isCanc = isReceiptCancelled(f.status);
+    if (statusFilter === 'Active' && isCanc) return false;
+    if (statusFilter === 'Cancelled' && !isCanc) return false;
+
+    var isCash = (f.paymentMode || '').toLowerCase() === 'cash';
+    if (modeFilter === 'Cash' && !isCash) return false;
+    if (modeFilter === 'Non-Cash' && isCash) return false;
+
+    var rDate = convertDateToYYYYMMDD(f.receiptDate);
+    if (fromDate && rDate && rDate < fromDate) return false;
+    if (toDate && rDate && rDate > toDate) return false;
+
+    return true;
+  });
+}
+
+function updateTallyExportPreview() {
+  var list = getFilteredTallyReceipts();
+  var countEl = document.getElementById('tally-preview-count');
+  var amtEl = document.getElementById('tally-preview-amount');
+  var dlBtn = document.getElementById('btn-download-tally-xml');
+
+  var totalAmt = list.reduce(function(sum, f){ return sum + (parseFloat(f.amountPaid) || 0); }, 0);
+  if (countEl) countEl.textContent = list.length + (list.length === 1 ? ' Receipt' : ' Receipts');
+  if (amtEl) amtEl.textContent = fmtMoney(totalAmt);
+  if (dlBtn) dlBtn.disabled = (list.length === 0);
+}
+
+function buildTallyReceiptsXml(receiptsList, bankAccountsList) {
+  var list = receiptsList || [];
+  var defaultBankName = (bankAccountsList && bankAccountsList.length > 0 && bankAccountsList[0].accountName) 
+    ? bankAccountsList[0].accountName 
+    : 'Hostel Bank Account';
+
+  var feeHeadsMap = {};
+  var bankLedgersMap = {};
+
+  list.forEach(function(f) {
+    var rawHead = (f.feeType || 'Hostel Fee').trim();
+    if (!feeHeadsMap[rawHead]) {
+      var isDeposit = /deposit|security/i.test(rawHead);
+      feeHeadsMap[rawHead] = isDeposit ? 'Current Liabilities' : 'Indirect Incomes';
+    }
+
+    var pMode = (f.paymentMode || '').trim();
+    var isCash = pMode.toLowerCase() === 'cash';
+    if (isCash) {
+      bankLedgersMap['Cash'] = 'Cash-in-hand';
+    } else {
+      var bankName = (f.reconBank || '').trim();
+      if (!bankName) {
+        if (/easebuzz/i.test(pMode)) {
+          bankName = 'Easebuzz Settlement A/c';
+        } else if (/cashfree/i.test(pMode)) {
+          bankName = 'Cashfree Settlement A/c';
+        } else {
+          bankName = defaultBankName;
+        }
+      }
+      bankLedgersMap[bankName] = 'Bank Accounts';
+    }
+  });
+
+  var xml = '<?xml version="1.0" encoding="utf-8"?>\r\n';
+  xml += '<ENVELOPE>\r\n';
+  xml += '  <HEADER>\r\n';
+  xml += '    <TALLYREQUEST>Import Data</TALLYREQUEST>\r\n';
+  xml += '  </HEADER>\r\n';
+  xml += '  <BODY>\r\n';
+  xml += '    <IMPORTDATA>\r\n';
+  xml += '      <REQUESTDATA>\r\n';
+
+  // 1. Output Master Ledgers for Fee Heads (Indirect Incomes or Current Liabilities)
+  Object.keys(feeHeadsMap).forEach(function(headName) {
+    var parentGroup = feeHeadsMap[headName];
+    xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+    xml += '          <LEDGER NAME="' + escapeTallyXml(headName) + '" ACTION="Create">\r\n';
+    xml += '            <NAME>' + escapeTallyXml(headName) + '</NAME>\r\n';
+    xml += '            <PARENT>' + escapeTallyXml(parentGroup) + '</PARENT>\r\n';
+    xml += '            <ISBILLWISEON>No</ISBILLWISEON>\r\n';
+    xml += '            <AFFECTSSTOCK>No</AFFECTSSTOCK>\r\n';
+    xml += '          </LEDGER>\r\n';
+    xml += '        </TALLYMESSAGE>\r\n';
+  });
+
+  // 2. Output Master Ledgers for Bank / Cash
+  Object.keys(bankLedgersMap).forEach(function(bName) {
+    var parentGroup = bankLedgersMap[bName];
+    xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+    xml += '          <LEDGER NAME="' + escapeTallyXml(bName) + '" ACTION="Create">\r\n';
+    xml += '            <NAME>' + escapeTallyXml(bName) + '</NAME>\r\n';
+    xml += '            <PARENT>' + escapeTallyXml(parentGroup) + '</PARENT>\r\n';
+    xml += '            <ISBILLWISEON>No</ISBILLWISEON>\r\n';
+    xml += '          </LEDGER>\r\n';
+    xml += '        </TALLYMESSAGE>\r\n';
+  });
+
+  // 3. Output Receipt Vouchers
+  list.forEach(function(f) {
+    var amt = parseFloat(f.amountPaid) || 0;
+    if (amt <= 0) return;
+
+    var rawDate = convertDateToYYYYMMDD(f.receiptDate);
+    var tallyDate = rawDate ? rawDate.replace(/-/g, '') : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    var rcptId = (f.receiptId || '').trim();
+    var feeHead = (f.feeType || 'Hostel Fee').trim();
+
+    var pMode = (f.paymentMode || '').trim();
+    var isCash = pMode.toLowerCase() === 'cash';
+    var bankLedger = isCash ? 'Cash' : ((f.reconBank || '').trim() || (/easebuzz/i.test(pMode) ? 'Easebuzz Settlement A/c' : (/cashfree/i.test(pMode) ? 'Cashfree Settlement A/c' : defaultBankName)));
+
+    var narrationParts = [
+      'Hostel Fee Receipt: ' + rcptId,
+      'Student: ' + (f.studentName || '') + (f.appId ? ' (' + f.appId + ')' : ''),
+      f.roomNumber ? 'Room: ' + f.roomNumber : '',
+      'Head: ' + feeHead,
+      f.feeMonth ? 'Month: ' + f.feeMonth : '',
+      'Mode: ' + (f.paymentMode || 'Cash'),
+      f.transactionId ? 'Txn: ' + f.transactionId : '',
+      f.remarks ? 'Remarks: ' + f.remarks : ''
+    ].filter(Boolean);
+    var narration = narrationParts.join(' | ');
+
+    xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+    xml += '          <VOUCHER VCHTYPE="Receipt" ACTION="Create" OBJVIEW="Accounting Voucher View">\r\n';
+    xml += '            <DATE>' + tallyDate + '</DATE>\r\n';
+    xml += '            <EFFECTIVEDATE>' + tallyDate + '</EFFECTIVEDATE>\r\n';
+    xml += '            <GUID>AMG-HOSTEL-' + escapeTallyXml(rcptId || ('VCH-' + tallyDate + '-' + Math.floor(Math.random() * 10000))) + '</GUID>\r\n';
+    xml += '            <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>\r\n';
+    xml += '            <VOUCHERNUMBER>' + escapeTallyXml(rcptId) + '</VOUCHERNUMBER>\r\n';
+    if (f.transactionId) {
+      xml += '            <REFERENCE>' + escapeTallyXml(f.transactionId) + '</REFERENCE>\r\n';
+    }
+    xml += '            <PARTYLEDGERNAME>' + escapeTallyXml(feeHead) + '</PARTYLEDGERNAME>\r\n';
+    xml += '            <ISINVOICE>No</ISINVOICE>\r\n';
+    xml += '            <NARRATION>' + escapeTallyXml(narration) + '</NARRATION>\r\n';
+
+    // Debit: Bank / Cash (ISDEEMEDPOSITIVE = Yes, Negative Amount in TDL)
+    xml += '            <ALLLEDGERENTRIES.LIST>\r\n';
+    xml += '              <LEDGERNAME>' + escapeTallyXml(bankLedger) + '</LEDGERNAME>\r\n';
+    xml += '              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\r\n';
+    xml += '              <LEDGERFROMITEM>No</LEDGERFROMITEM>\r\n';
+    xml += '              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>\r\n';
+    xml += '              <ISPARTYLEDGER>No</ISPARTYLEDGER>\r\n';
+    xml += '              <AMOUNT>-' + amt.toFixed(2) + '</AMOUNT>\r\n';
+    xml += '            </ALLLEDGERENTRIES.LIST>\r\n';
+
+    // Credit: Fee Head (ISDEEMEDPOSITIVE = No, Positive Amount in TDL)
+    xml += '            <ALLLEDGERENTRIES.LIST>\r\n';
+    xml += '              <LEDGERNAME>' + escapeTallyXml(feeHead) + '</LEDGERNAME>\r\n';
+    xml += '              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>\r\n';
+    xml += '              <LEDGERFROMITEM>No</LEDGERFROMITEM>\r\n';
+    xml += '              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>\r\n';
+    xml += '              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>\r\n';
+    xml += '              <AMOUNT>' + amt.toFixed(2) + '</AMOUNT>\r\n';
+    xml += '            </ALLLEDGERENTRIES.LIST>\r\n';
+
+    xml += '          </VOUCHER>\r\n';
+    xml += '        </TALLYMESSAGE>\r\n';
+  });
+
+  xml += '      </REQUESTDATA>\r\n';
+  xml += '    </IMPORTDATA>\r\n';
+  xml += '  </BODY>\r\n';
+  xml += '</ENVELOPE>\r\n';
+
+  return xml;
+}
+
+function generateAndDownloadTallyXML() {
+  var list = getFilteredTallyReceipts();
+  if (!list || list.length === 0) {
+    showToast('No receipts found for the selected criteria.', 'warning');
+    return;
+  }
+
+  var xml = buildTallyReceiptsXml(list, _allBankAccounts);
+
+  var blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var fromDate = document.getElementById('tally-from-date') ? document.getElementById('tally-from-date').value : '';
+  var toDate = document.getElementById('tally-to-date') ? document.getElementById('tally-to-date').value : '';
+  var fileSuffix = (fromDate && toDate) ? ('_' + fromDate + '_to_' + toDate) : ('_' + new Date().toISOString().slice(0, 10));
+  a.href = url;
+  a.download = 'Tally_Fee_Receipts' + fileSuffix + '.xml';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('Tally XML with ' + list.length + ' vouchers exported successfully!', 'success');
+  closeModal('modal-tally-export');
 }
 
 // ── MANUAL FEE TYPES MANAGEMENT (Admin Configurable) ─────────
@@ -16249,7 +16669,12 @@ function viewStudentLedger(appId, directStudentObj) {
       };
     }) : [];
 
-    var receiptsData = (rcptRes && rcptRes.data) ? rcptRes.data.map(function(r, i){
+    // ── FILTER: exclude cancelled receipts before building totals ──
+    var activeRcptRaw = (rcptRes && rcptRes.data) ? rcptRes.data.filter(function(r) {
+      return !isReceiptCancelled(r.status);
+    }) : [];
+
+    var receiptsData = activeRcptRaw.map(function(r, i){
       return {
         rowIndex: i + 1,
         receiptId: r.receipt_id,
@@ -16262,7 +16687,7 @@ function viewStudentLedger(appId, directStudentObj) {
         status: r.status,
         collectedBy: r.collected_by || 'Admin'
       };
-    }) : [];
+    });
 
     var totalDemanded = 0;
     var totalPaid = 0;
@@ -17505,7 +17930,10 @@ function renderStudentPortal(data) {
 
   var receiptsTbody = document.getElementById('sp-receipts-tbody');
   if (receiptsTbody) {
-    var receipts = data.receipts || [];
+    var receipts = (data.receipts || []).filter(function(rc) {
+      // ── FILTER: hide cancelled receipts from the student's view ──
+      return !isReceiptCancelled(rc.status);
+    });
     if (receipts.length === 0) {
       receiptsTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3);">No receipts generated yet.</td></tr>';
     } else {
@@ -20515,6 +20943,9 @@ if (typeof saveEasebuzzSettings !== 'undefined') window.saveEasebuzzSettings = s
 if (typeof testEasebuzzConnection !== 'undefined') window.testEasebuzzConnection = testEasebuzzConnection;
 if (typeof updateEasebuzzEnvBadge !== 'undefined') window.updateEasebuzzEnvBadge = updateEasebuzzEnvBadge;
 if (typeof toggleEasebuzzSecretVisibility !== 'undefined') window.toggleEasebuzzSecretVisibility = toggleEasebuzzSecretVisibility;
+if (typeof isEasebuzzPaymentMode !== 'undefined') window.isEasebuzzPaymentMode = isEasebuzzPaymentMode;
+if (typeof openEasebuzzConfirmModal !== 'undefined') window.openEasebuzzConfirmModal = openEasebuzzConfirmModal;
+if (typeof verifyEasebuzzAndConfirm !== 'undefined') window.verifyEasebuzzAndConfirm = verifyEasebuzzAndConfirm;
 if (typeof openCashfreeLinkModal !== 'undefined') window.openCashfreeLinkModal = openCashfreeLinkModal;
 if (typeof openCashfreeFromCollectModal !== 'undefined') window.openCashfreeFromCollectModal = openCashfreeFromCollectModal;
 if (typeof openCashfreeFromSFD !== 'undefined') window.openCashfreeFromSFD = openCashfreeFromSFD;

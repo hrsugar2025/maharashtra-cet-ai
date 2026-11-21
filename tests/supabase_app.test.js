@@ -1729,6 +1729,311 @@ test('28. Easebuzz Test Endpoint Dummy ₹1.00 Verification Hash', async () => {
   assert.equal(hash.length, 128);
 });
 
+test('29. Tally XML Export Engine - Auto-creates Fee Heads under Indirect Incomes and Banks under Bank Accounts', () => {
+  function escapeTallyXml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  function convertDateToYYYYMMDD(dateStr) {
+    if (!dateStr) return '';
+    var months = {jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12'};
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+      var day = parts[0].toString().trim().padStart(2, '0');
+      var monthName = parts[1].toString().trim().toLowerCase();
+      var month = months[monthName] || '01';
+      var year = parts[2].toString().trim();
+      if (year.length === 4) return year + '-' + month + '-' + day;
+    }
+    var d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var da = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + da;
+    }
+    return '';
+  }
+
+  function buildTallyReceiptsXml(receiptsList, bankAccountsList) {
+    var list = receiptsList || [];
+    var defaultBankName = (bankAccountsList && bankAccountsList.length > 0 && bankAccountsList[0].accountName) 
+      ? bankAccountsList[0].accountName 
+      : 'Hostel Bank Account';
+
+    var feeHeadsMap = {};
+    var bankLedgersMap = {};
+
+    list.forEach(function(f) {
+      var rawHead = (f.feeType || 'Hostel Fee').trim();
+      if (!feeHeadsMap[rawHead]) {
+        var isDeposit = /deposit|security/i.test(rawHead);
+        feeHeadsMap[rawHead] = isDeposit ? 'Current Liabilities' : 'Indirect Incomes';
+      }
+
+      var pMode = (f.paymentMode || '').trim();
+      var isCash = pMode.toLowerCase() === 'cash';
+      if (isCash) {
+        bankLedgersMap['Cash'] = 'Cash-in-hand';
+      } else {
+        var bankName = (f.reconBank || '').trim();
+        if (!bankName) {
+          if (/easebuzz/i.test(pMode)) {
+            bankName = 'Easebuzz Settlement A/c';
+          } else if (/cashfree/i.test(pMode)) {
+            bankName = 'Cashfree Settlement A/c';
+          } else {
+            bankName = defaultBankName;
+          }
+        }
+        bankLedgersMap[bankName] = 'Bank Accounts';
+      }
+    });
+
+    var xml = '<?xml version="1.0" encoding="utf-8"?>\r\n';
+    xml += '<ENVELOPE>\r\n';
+    xml += '  <HEADER>\r\n';
+    xml += '    <TALLYREQUEST>Import Data</TALLYREQUEST>\r\n';
+    xml += '  </HEADER>\r\n';
+    xml += '  <BODY>\r\n';
+    xml += '    <IMPORTDATA>\r\n';
+    xml += '      <REQUESTDATA>\r\n';
+
+    Object.keys(feeHeadsMap).forEach(function(headName) {
+      var parentGroup = feeHeadsMap[headName];
+      xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+      xml += '          <LEDGER NAME="' + escapeTallyXml(headName) + '" ACTION="Create">\r\n';
+      xml += '            <NAME>' + escapeTallyXml(headName) + '</NAME>\r\n';
+      xml += '            <PARENT>' + escapeTallyXml(parentGroup) + '</PARENT>\r\n';
+      xml += '            <ISBILLWISEON>No</ISBILLWISEON>\r\n';
+      xml += '            <AFFECTSSTOCK>No</AFFECTSSTOCK>\r\n';
+      xml += '          </LEDGER>\r\n';
+      xml += '        </TALLYMESSAGE>\r\n';
+    });
+
+    Object.keys(bankLedgersMap).forEach(function(bName) {
+      var parentGroup = bankLedgersMap[bName];
+      xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+      xml += '          <LEDGER NAME="' + escapeTallyXml(bName) + '" ACTION="Create">\r\n';
+      xml += '            <NAME>' + escapeTallyXml(bName) + '</NAME>\r\n';
+      xml += '            <PARENT>' + escapeTallyXml(parentGroup) + '</PARENT>\r\n';
+      xml += '            <ISBILLWISEON>No</ISBILLWISEON>\r\n';
+      xml += '          </LEDGER>\r\n';
+      xml += '        </TALLYMESSAGE>\r\n';
+    });
+
+    list.forEach(function(f) {
+      var amt = parseFloat(f.amountPaid) || 0;
+      if (amt <= 0) return;
+
+      var rawDate = convertDateToYYYYMMDD(f.receiptDate);
+      var tallyDate = rawDate ? rawDate.replace(/-/g, '') : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      var rcptId = (f.receiptId || '').trim();
+      var feeHead = (f.feeType || 'Hostel Fee').trim();
+
+      var pMode = (f.paymentMode || '').trim();
+      var isCash = pMode.toLowerCase() === 'cash';
+      var bankLedger = isCash ? 'Cash' : ((f.reconBank || '').trim() || (/easebuzz/i.test(pMode) ? 'Easebuzz Settlement A/c' : (/cashfree/i.test(pMode) ? 'Cashfree Settlement A/c' : defaultBankName)));
+
+      var narrationParts = [
+        'Hostel Fee Receipt: ' + rcptId,
+        'Student: ' + (f.studentName || '') + (f.appId ? ' (' + f.appId + ')' : ''),
+        f.roomNumber ? 'Room: ' + f.roomNumber : '',
+        'Head: ' + feeHead,
+        f.feeMonth ? 'Month: ' + f.feeMonth : '',
+        'Mode: ' + (f.paymentMode || 'Cash'),
+        f.transactionId ? 'Txn: ' + f.transactionId : '',
+        f.remarks ? 'Remarks: ' + f.remarks : ''
+      ].filter(Boolean);
+      var narration = narrationParts.join(' | ');
+
+      xml += '        <TALLYMESSAGE xmlns:UDF="TallyUDF">\r\n';
+      xml += '          <VOUCHER VCHTYPE="Receipt" ACTION="Create" OBJVIEW="Accounting Voucher View">\r\n';
+      xml += '            <DATE>' + tallyDate + '</DATE>\r\n';
+      xml += '            <EFFECTIVEDATE>' + tallyDate + '</EFFECTIVEDATE>\r\n';
+      xml += '            <GUID>AMG-HOSTEL-' + escapeTallyXml(rcptId || ('VCH-' + tallyDate + '-' + Math.floor(Math.random() * 10000))) + '</GUID>\r\n';
+      xml += '            <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>\r\n';
+      xml += '            <VOUCHERNUMBER>' + escapeTallyXml(rcptId) + '</VOUCHERNUMBER>\r\n';
+      if (f.transactionId) {
+        xml += '            <REFERENCE>' + escapeTallyXml(f.transactionId) + '</REFERENCE>\r\n';
+      }
+      xml += '            <PARTYLEDGERNAME>' + escapeTallyXml(feeHead) + '</PARTYLEDGERNAME>\r\n';
+      xml += '            <ISINVOICE>No</ISINVOICE>\r\n';
+      xml += '            <NARRATION>' + escapeTallyXml(narration) + '</NARRATION>\r\n';
+
+      xml += '            <ALLLEDGERENTRIES.LIST>\r\n';
+      xml += '              <LEDGERNAME>' + escapeTallyXml(bankLedger) + '</LEDGERNAME>\r\n';
+      xml += '              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>\r\n';
+      xml += '              <LEDGERFROMITEM>No</LEDGERFROMITEM>\r\n';
+      xml += '              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>\r\n';
+      xml += '              <ISPARTYLEDGER>No</ISPARTYLEDGER>\r\n';
+      xml += '              <AMOUNT>-' + amt.toFixed(2) + '</AMOUNT>\r\n';
+      xml += '            </ALLLEDGERENTRIES.LIST>\r\n';
+
+      xml += '            <ALLLEDGERENTRIES.LIST>\r\n';
+      xml += '              <LEDGERNAME>' + escapeTallyXml(feeHead) + '</LEDGERNAME>\r\n';
+      xml += '              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>\r\n';
+      xml += '              <LEDGERFROMITEM>No</LEDGERFROMITEM>\r\n';
+      xml += '              <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>\r\n';
+      xml += '              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>\r\n';
+      xml += '              <AMOUNT>' + amt.toFixed(2) + '</AMOUNT>\r\n';
+      xml += '            </ALLLEDGERENTRIES.LIST>\r\n';
+
+      xml += '          </VOUCHER>\r\n';
+      xml += '        </TALLYMESSAGE>\r\n';
+    });
+
+    xml += '      </REQUESTDATA>\r\n';
+    xml += '    </IMPORTDATA>\r\n';
+    xml += '  </BODY>\r\n';
+    xml += '</ENVELOPE>\r\n';
+
+    return xml;
+  }
+
+  const mockReceipts = [
+    {
+      receiptId: 'RCPT-2026-0001',
+      receiptDate: '21-Nov-2026',
+      studentName: 'Pooja Sharma & Co.',
+      appId: 'APP-2026-101',
+      roomNumber: '101-A',
+      feeType: 'Room Rent',
+      feeMonth: 'November',
+      paymentMode: 'Bank Transfer',
+      reconBank: 'UBI-GIRLS_HOSTEL-50560',
+      transactionId: 'TXN998877',
+      amountPaid: 15000,
+      remarks: 'Term 1 payment'
+    },
+    {
+      receiptId: 'RCPT-2026-0002',
+      receiptDate: '2026-11-20',
+      studentName: 'Ananya Deshmukh',
+      appId: 'APP-2026-102',
+      roomNumber: '102-B',
+      feeType: 'Mess Fee',
+      feeMonth: 'November',
+      paymentMode: 'Cash',
+      amountPaid: 8000,
+      remarks: 'Mess cash'
+    },
+    {
+      receiptId: 'RCPT-2026-0003',
+      receiptDate: '2026-11-19',
+      studentName: 'Rhea Patel',
+      appId: 'APP-2026-103',
+      roomNumber: '201-A',
+      feeType: 'Security Deposit',
+      feeMonth: 'One-Time',
+      paymentMode: 'Online (Easebuzz)',
+      amountPaid: 5000,
+      remarks: 'Caution deposit online'
+    }
+  ];
+
+  const mockBanks = [
+    { accountName: 'UBI-GIRLS_HOSTEL-50560', bankName: 'Union Bank of India' }
+  ];
+
+  const xml = buildTallyReceiptsXml(mockReceipts, mockBanks);
+
+  // Assertions:
+  // 1. Valid XML Envelope & Import headers
+  assert.ok(xml.includes('<TALLYREQUEST>Import Data</TALLYREQUEST>'));
+
+  // 2. Fee Heads auto-created under Indirect Incomes
+  assert.ok(xml.includes('<LEDGER NAME="Room Rent" ACTION="Create">'));
+  assert.ok(xml.includes('<PARENT>Indirect Incomes</PARENT>'));
+  assert.ok(xml.includes('<LEDGER NAME="Mess Fee" ACTION="Create">'));
+
+  // 3. Security/Caution Deposit auto-created under Current Liabilities
+  assert.ok(xml.includes('<LEDGER NAME="Security Deposit" ACTION="Create">'));
+  assert.ok(xml.includes('<PARENT>Current Liabilities</PARENT>'));
+
+  // 4. Banks auto-created under Bank Accounts, and Cash under Cash-in-hand
+  assert.ok(xml.includes('<LEDGER NAME="UBI-GIRLS_HOSTEL-50560" ACTION="Create">'));
+  assert.ok(xml.includes('<PARENT>Bank Accounts</PARENT>'));
+  assert.ok(xml.includes('<LEDGER NAME="Easebuzz Settlement A/c" ACTION="Create">'));
+  assert.ok(xml.includes('<LEDGER NAME="Cash" ACTION="Create">'));
+  assert.ok(xml.includes('<PARENT>Cash-in-hand</PARENT>'));
+
+  // 5. XML character escaping (& in Pooja Sharma & Co.)
+  assert.ok(xml.includes('Pooja Sharma &amp; Co.'));
+
+  // 6. Voucher details
+  assert.ok(xml.includes('<VOUCHER VCHTYPE="Receipt" ACTION="Create"'));
+  assert.ok(xml.includes('<VOUCHERNUMBER>RCPT-2026-0001</VOUCHERNUMBER>'));
+  assert.ok(xml.includes('<AMOUNT>-15000.00</AMOUNT>'));
+  assert.ok(xml.includes('<AMOUNT>15000.00</AMOUNT>'));
+  assert.ok(xml.includes('<DATE>20261121</DATE>'));
+  assert.ok(xml.includes('<REFERENCE>TXN998877</REFERENCE>'));
+});
+
+test('30. Easebuzz Transaction Status Verification - Handles .msg object payload, avoid [object Object] and validates PAID status', async () => {
+  // Simulating Easebuzz API responses
+  const rawEasebuzzRetrieveResponseWithMsg = {
+    status: true,
+    msg: {
+      txnid: 'TXN_1795260118969_APP-2026-9007',
+      firstname: 'Savitri',
+      email: 'mvmghostel@gmail.com',
+      phone: '7020319141',
+      mode: 'UPI',
+      bank_ref_num: '669109417082',
+      easepayid: 'E2611211AYKHPY',
+      amount: '52500.0',
+      net_amount_debit: '52500.0',
+      status: 'success'
+    }
+  };
+
+  // 1. Verify parser extracts txnData when Easebuzz returns record in .msg
+  const payload1 = (typeof rawEasebuzzRetrieveResponseWithMsg.msg === 'object' && rawEasebuzzRetrieveResponseWithMsg.msg !== null)
+    ? rawEasebuzzRetrieveResponseWithMsg.msg
+    : ((typeof rawEasebuzzRetrieveResponseWithMsg.data === 'object' && rawEasebuzzRetrieveResponseWithMsg.data !== null) ? rawEasebuzzRetrieveResponseWithMsg.data : null);
+
+  assert.ok(payload1, 'Payload must be non-null when inside .msg');
+  assert.equal(payload1.txnid, 'TXN_1795260118969_APP-2026-9007');
+  assert.equal(payload1.status, 'success');
+  assert.equal(payload1.easepayid, 'E2611211AYKHPY');
+  assert.equal(parseFloat(payload1.net_amount_debit), 52500);
+
+  // 2. Verify parser extracts txnData when returned in .data
+  const rawEasebuzzRetrieveResponseWithData = {
+    status: true,
+    data: {
+      txnid: 'TXN_123',
+      amount: '1000.0',
+      status: 'success'
+    }
+  };
+  const payload2 = (typeof rawEasebuzzRetrieveResponseWithData.msg === 'object' && rawEasebuzzRetrieveResponseWithData.msg !== null)
+    ? rawEasebuzzRetrieveResponseWithData.msg
+    : ((typeof rawEasebuzzRetrieveResponseWithData.data === 'object' && rawEasebuzzRetrieveResponseWithData.data !== null) ? rawEasebuzzRetrieveResponseWithData.data : null);
+  assert.ok(payload2, 'Payload must be non-null when inside .data');
+  assert.equal(payload2.txnid, 'TXN_123');
+
+  // 3. Verify error description never outputs [object Object]
+  const failedResponse = {
+    status: false,
+    msg: 'Transaction not found.'
+  };
+  const errorDesc = (failedResponse && typeof failedResponse.msg === 'string' ? failedResponse.msg : '')
+    || (failedResponse && typeof failedResponse.data === 'string' ? failedResponse.data : '')
+    || 'Transaction not found in Easebuzz.';
+  assert.equal(errorDesc, 'Transaction not found.');
+  assert.ok(!errorDesc.includes('[object Object]'));
+});
+
+
+
 
 
 
