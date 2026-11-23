@@ -3509,7 +3509,7 @@ if (typeof window.google.script.run === 'undefined') {
         </div>
       </div>
       <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select" onchange="var n=document.getElementById('collect-eb-note'); if(n) n.style.display=(this.value && this.value.toLowerCase().indexOf('easebuzz')!==-1)?'block':'none';"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Payment Gateway (Easebuzz)</option><option>Online (Easebuzz)</option><option>Online (Cashfree)</option></select></div>
-      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="Easebuzz Txn ID / Reference (Required for Easebuzz)"/><div id="collect-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Easebuzz payment will be strictly verified via Easebuzz API and confirmed before generating receipt.</div></div>
+      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="Easebuzz ID (e.g. E2611...) OR Merchant Txn ID (e.g. TXN_...)"/><div id="collect-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Enter the Easebuzz ID (e.g. E2611231B39B35) from your Easebuzz Dashboard, or the Merchant Transaction ID. Payment will be verified via Easebuzz API before generating receipt.</div></div>
       <div class="form-group"><label class="form-label">Remarks</label><input type="text" id="collect-remarks" class="form-input" placeholder="Optional notes"/></div>
       <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); text-align: center;">
         <button type="button" class="btn btn-ghost btn-sm" onclick="openCashfreeFromCollectModal()" style="border-color: #10B981; color: #059669; font-weight: 600; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
@@ -14013,6 +14013,8 @@ function verifyEasebuzzAndConfirm(options) {
   }
 
   var cfg = getSavedEasebuzzConfig();
+  // Detect if the user entered an Easebuzz-generated easepayid (starts with E + digits) or a merchant txnid
+  var isEasepayId = /^E\d{4,}/i.test(txnId);
 
   fetch('/api/easebuzz', {
     method: 'POST',
@@ -14022,7 +14024,8 @@ function verifyEasebuzzAndConfirm(options) {
       env: cfg.env || 'production',
       merchantKey: cfg.merchantKey || cfg.appId || 'FRHPPBX6RF',
       salt: cfg.salt || cfg.secretKey || '45UDY802LV',
-      txnid: txnId,
+      txnid: isEasepayId ? '' : txnId,
+      easepayid: isEasepayId ? txnId : '',
       linkId: txnId,
       amount: amount
     })
