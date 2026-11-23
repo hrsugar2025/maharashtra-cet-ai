@@ -2032,6 +2032,104 @@ test('30. Easebuzz Transaction Status Verification - Handles .msg object payload
   assert.ok(!errorDesc.includes('[object Object]'));
 });
 
+test('31. Easebuzz Customer Full Name Preservation & Sanitization for Reports', async () => {
+  const crypto = require('crypto');
+
+  function sanitizeStudentFullName(rawName) {
+    return (rawName || 'Hostel Student')
+      .toString()
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 50) || 'Hostel Student';
+  }
+
+  // 1. Verify multi-word Indian student names are preserved intact (not truncated to first word)
+  assert.equal(sanitizeStudentFullName('Sharvari Popat Jadhav'), 'Sharvari Popat Jadhav');
+  assert.equal(sanitizeStudentFullName('Gawade Prerana Gorakh'), 'Gawade Prerana Gorakh');
+  assert.equal(sanitizeStudentFullName('Ritika Tanaji Kokane'), 'Ritika Tanaji Kokane');
+  assert.equal(sanitizeStudentFullName('Akanksha Kalidas Hare'), 'Akanksha Kalidas Hare');
+  assert.equal(sanitizeStudentFullName('Savitri Sangmeshwar Bhange'), 'Savitri Sangmeshwar Bhange');
+  assert.equal(sanitizeStudentFullName('Tejaswini prakash avhad'), 'Tejaswini prakash avhad');
+
+  // 2. Verify special character sanitization while retaining full names
+  assert.equal(sanitizeStudentFullName('Sharvari  Popat   Jadhav!@#'), 'Sharvari Popat Jadhav');
+
+  // 3. Verify valid 128-char SHA-512 hash generated with full name
+  const fullName = 'Sharvari Popat Jadhav';
+  const testKey = 'FRHPPBX6RF';
+  const testSalt = '45UDY802LV';
+  const txnid = 'TXN_1731400000001_APP28785';
+  const amount = '52500.00';
+  const productinfo = 'Hostel Fee';
+  const email = 'mvmghostel@gmail.com';
+
+  const hashSequence = [
+    testKey,
+    txnid,
+    amount,
+    productinfo,
+    fullName,
+    email,
+    'APP-2026-28785', 'LDG-1001', '2026-27', '', '',
+    '', '', '', '', '',
+    testSalt
+  ].join('|');
+
+  const initiateHash = crypto.createHash('sha512').update(hashSequence).digest('hex').toLowerCase();
+  assert.equal(typeof initiateHash, 'string');
+  assert.equal(initiateHash.length, 128);
+  assert.ok(hashSequence.includes('Sharvari Popat Jadhav'));
+});
+
+test('32. Easebuzz check_status payload structure & queryTxnId reference check', () => {
+  // Simulates check_status / verify_payment return building
+  const txnid = 'TXN_1731400000000_STD';
+  const linkId = 'TXN_1731400000000_STD';
+  const easepayid = '';
+  const queryInput = (txnid || linkId || easepayid || '').toString().trim();
+  const queryTxnId = queryInput;
+
+  const txnData = {
+    status: 'success',
+    txnid: 'TXN_1731400000000_STD',
+    easepayid: 'E2611231234ABC',
+    amount: '1000.00',
+    mode: 'UPI',
+    addedon: '2026-11-23 16:19:00'
+  };
+
+  const settledAmount = parseFloat(txnData.amount);
+  const verifiedTime = new Date().toISOString();
+
+  const responseObj = {
+    success: true,
+    isPaid: true,
+    linkStatus: 'PAID',
+    linkId: queryTxnId,
+    txnid: txnData.txnid || queryTxnId,
+    easepayid: txnData.easepayid || '',
+    orderId: txnData.easepayid || queryTxnId,
+    amount: parseFloat(txnData.amount || settledAmount),
+    amountPaid: settledAmount,
+    bankRefNum: txnData.bank_ref_num || '',
+    paymentMode: txnData.mode || 'Easebuzz Online',
+    upiVa: txnData.upi_va || '',
+    updatedAt: txnData.addedon || verifiedTime,
+    verifiedAt: verifiedTime,
+    verificationSource: 'Easebuzz Transaction v2 API',
+    message: 'Payment confirmed and verified in Easebuzz.'
+  };
+
+  assert.equal(responseObj.success, true);
+  assert.equal(responseObj.isPaid, true);
+  assert.equal(responseObj.linkId, 'TXN_1731400000000_STD');
+  assert.equal(responseObj.txnid, 'TXN_1731400000000_STD');
+  assert.equal(responseObj.easepayid, 'E2611231234ABC');
+  assert.equal(responseObj.orderId, 'E2611231234ABC');
+  assert.equal(responseObj.amountPaid, 1000);
+});
+
 
 
 

@@ -3,6 +3,34 @@
 
 import crypto from 'crypto';
 
+// Supabase REST client configuration for resolving student full name
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bhfiyrorfxvabquxmeiv.supabase.co';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || 'sb_publishable_woMsdVpSPa7mKfHOeGGK8Q_paTZlW3K';
+
+async function supabaseFetch(endpoint, options = {}) {
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${endpoint}`;
+  const headers = {
+    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 500, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -33,11 +61,15 @@ export default async function handler(req, res) {
       env,
       linkId,
       txnid,
+      easepayid,
       amount,
       purpose,
       customerPhone,
       customerName,
+      firstname,
+      studentName,
       customerEmail,
+      merchantEmail,
       udf1,
       udf2,
       udf3,
@@ -163,11 +195,37 @@ export default async function handler(req, res) {
       if (phone.length > 10) phone = phone.slice(-10);
       if (phone.length !== 10) phone = '9999999999';
 
-      // Sanitize customer name (alphanumeric & spaces, max 50 chars)
-      const sanitizedName = (customerName || 'Hostel Student')
-        .replace(/[^a-zA-Z0-9\s]/g, '')
+      // Sanitize customer full name (alphanumeric & spaces, max 50 chars)
+      // Easebuzz displays the mandatory firstname parameter as Customer Name in dashboard/reports
+      let rawName = (customerName || firstname || studentName || '').toString().trim();
+
+      // If missing, generic, or only a single word, attempt Supabase lookup via udf1 (app_id) or udf2 (ledger_id)
+      if ((!rawName || !rawName.includes(' ') || rawName.toLowerCase() === 'student') && (udf1 || udf2)) {
+        try {
+          const sLookupId = (udf1 || '').toString().trim();
+          const fLookupId = (udf2 || '').toString().trim();
+          if (sLookupId) {
+            const sRes = await supabaseFetch(`students?app_id=eq.${encodeURIComponent(sLookupId)}&select=full_name`);
+            if (sRes.ok && Array.isArray(sRes.data) && sRes.data.length > 0 && sRes.data[0].full_name) {
+              rawName = sRes.data[0].full_name;
+            }
+          }
+          if ((!rawName || !rawName.includes(' ')) && fLookupId) {
+            const lRes = await supabaseFetch(`student_fee_ledger?ledger_id=eq.${encodeURIComponent(fLookupId)}&select=student_name`);
+            if (lRes.ok && Array.isArray(lRes.data) && lRes.data.length > 0 && lRes.data[0].student_name) {
+              rawName = lRes.data[0].student_name;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!rawName) rawName = 'Hostel Student';
+
+      const sanitizedName = rawName
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim()
-        .substring(0, 50) || 'Student';
+        .substring(0, 50) || 'Hostel Student';
 
       // Sanitize customer email
       const email = (customerEmail && customerEmail.includes('@'))
@@ -267,104 +325,129 @@ export default async function handler(req, res) {
 
     // ──────────────── ACTION: CHECK STATUS / VERIFY PAYMENT ────────────────
     if (action === 'check_status' || action === 'verify_payment') {
-      const queryTxnId = (txnid || linkId || easepayid || '').toString().trim();
+      // Accept txnid (merchant internal ID like TXN_...) or easepayid (Easebuzz-generated like E2611...)
+      const queryInput = (txnid || linkId || easepayid || '').toString().trim();
+      const queryTxnId = queryInput;
       const expectedAmount = amount !== undefined && amount !== null && amount !== '' ? parseFloat(amount) : null;
 
-      if (!queryTxnId) {
+      if (!queryInput) {
         return res.status(400).json({
           success: false,
           isPaid: false,
           linkStatus: 'FAILED',
-          message: 'Transaction ID (txnid/easepayid) is required to verify Easebuzz payment status.'
+          message: 'Transaction ID (txnid or Easebuzz easepayid) is required to verify Easebuzz payment status.'
         });
       }
 
-      // Hash sequence for Easebuzz Transaction v2 retrieve:
-      // sha512(key|txnid|salt)
-      const retrieveHash = sha512(`${clientKey}|${queryTxnId}|${clientSalt}`);
-
-      const retrieveParams = new URLSearchParams({
-        key: clientKey,
-        txnid: queryTxnId,
-        hash: retrieveHash
-      });
+      // Detect if the input looks like an easepayid (Easebuzz-generated IDs start with 'E' followed by digits/letters)
+      // Merchant txnids typically look like TXN_..., APP_..., EB_... etc.
+      const looksLikeEasepayid = /^E\d{4,}/i.test(queryInput);
 
       let responseData = null;
       let lastError = null;
       let rawPayload = null;
 
-      // 1. Query Easebuzz Transaction v2 Retrieve API (single transaction lookup)
-      try {
-        const resObj = await fetch(`${dashboardBaseUrl}/transaction/v2/retrieve`, {
+      // Helper: single retrieve by merchant txnid
+      const retrieveByTxnid = async (tid) => {
+        const h = sha512(`${clientKey}|${tid}|${clientSalt}`);
+        const params = new URLSearchParams({ key: clientKey, txnid: tid, hash: h });
+        const res = await fetch(`${dashboardBaseUrl}/transaction/v2/retrieve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: retrieveParams.toString()
+          body: params.toString()
         });
-
-        if (resObj.ok) {
-          responseData = await resObj.json();
-          if (responseData && (responseData.status === true || responseData.status === 1)) {
-            // Note: Easebuzz returns transaction object in .msg (or .data in some wrappers)
-            if (typeof responseData.msg === 'object' && responseData.msg !== null) {
-              rawPayload = responseData.msg;
-            } else if (typeof responseData.data === 'object' && responseData.data !== null) {
-              rawPayload = responseData.data;
-            }
-          }
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (json && (json.status === true || json.status === 1)) {
+          return (typeof json.msg === 'object' && json.msg !== null) ? json.msg
+               : (typeof json.data === 'object' && json.data !== null) ? json.data
+               : null;
         }
-      } catch (err) {
-        lastError = err;
+        return null;
+      };
+
+      // Helper: search by date range (tries up to 3 days back to catch timezone differences)
+      const searchByDate = async (q) => {
+        const pad = (n) => String(n).padStart(2, '0');
+        for (let daysBack = 0; daysBack <= 2; daysBack++) {
+          try {
+            const d = new Date();
+            d.setDate(d.getDate() - daysBack);
+            const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+
+            // Easebuzz Transaction Date API: hash = sha512(key|merchant_email|date|date|salt)
+            // The merchant_email field can be empty string if unknown — use '' as fallback
+            const mEmail = (merchantEmail || customerEmail || '').trim();
+            const dateHashStr = `${clientKey}|${mEmail}|${dateStr}|${dateStr}|${clientSalt}`;
+            const dateHash = sha512(dateHashStr);
+
+            // Try both the v2/retrieve/date endpoint and the v1/date endpoint
+            const endpoints = [
+              `${dashboardBaseUrl}/transaction/v2/retrieve/date`,
+              `${payBaseUrl}/transaction/v1/date`
+            ];
+
+            for (const endpoint of endpoints) {
+              try {
+                const dateRes = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    key: clientKey,
+                    merchant_email: mEmail,
+                    hash: dateHash,
+                    start_date: dateStr,
+                    end_date: dateStr,
+                    date_range: { start_date: dateStr, end_date: dateStr }
+                  })
+                });
+                if (!dateRes.ok) continue;
+                const dateData = await dateRes.json();
+                const rows = Array.isArray(dateData) ? dateData
+                           : Array.isArray(dateData.data) ? dateData.data
+                           : Array.isArray(dateData.msg) ? dateData.msg
+                           : null;
+                if (rows && rows.length > 0) {
+                  const ql = q.toLowerCase().trim();
+                  const found = rows.find((t) =>
+                    (t.txnid && t.txnid.toLowerCase() === ql) ||
+                    (t.easepayid && t.easepayid.toLowerCase() === ql)
+                  );
+                  if (found) return found;
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        return null;
+      };
+
+      // ── Strategy ──────────────────────────────────────────────────────────
+      // If input looks like an easepayid (E26...) → go straight to date search
+      // If input looks like a merchant txnid (TXN_...) → try single retrieve first, then date search
+      // ─────────────────────────────────────────────────────────────────────
+
+      if (!looksLikeEasepayid) {
+        // 1a. Try direct single retrieve by txnid
+        try {
+          rawPayload = await retrieveByTxnid(queryInput);
+        } catch (err) {
+          lastError = err;
+        }
       }
 
-      // 2. Fallback: If not found yet (e.g. queryTxnId is an easepayid, or single retrieve missed),
-      // search today's transactions via Easebuzz Transaction Date V2 API
+      // 2. Date-based search (runs if txnid retrieve missed, OR if input is an easepayid)
       if (!rawPayload) {
         try {
-          const now = new Date();
-          const pad = (n) => String(n).padStart(2, '0');
-          const todayStr = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}`;
-          const dateHashStr = `${clientKey}||${todayStr}|${todayStr}|${clientSalt}`;
-          const dateHash = sha512(dateHashStr);
-
-          const dateRes = await fetch(`${dashboardBaseUrl}/transaction/v2/retrieve/date`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              key: clientKey,
-              hash: dateHash,
-              date_range: { start_date: todayStr, end_date: todayStr }
-            })
-          });
-
-          if (dateRes.ok) {
-            const dateData = await dateRes.json();
-            if (dateData && dateData.status && Array.isArray(dateData.data)) {
-              const q = queryTxnId.toLowerCase().trim();
-              const found = dateData.data.find((t) =>
-                (t.txnid && t.txnid.toLowerCase() === q) ||
-                (t.easepayid && t.easepayid.toLowerCase() === q)
-              );
-              if (found) {
-                rawPayload = found;
-                // If found record has a distinct txnid, attempt full single retrieve for all fields
-                if (found.txnid && found.txnid !== queryTxnId) {
-                  try {
-                    const fullHash = sha512(`${clientKey}|${found.txnid}|${clientSalt}`);
-                    const fullRes = await fetch(`${dashboardBaseUrl}/transaction/v2/retrieve`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                      body: new URLSearchParams({ key: clientKey, txnid: found.txnid, hash: fullHash }).toString()
-                    });
-                    if (fullRes.ok) {
-                      const fullJson = await fullRes.json();
-                      const fullObj = (fullJson && typeof fullJson.msg === 'object' && fullJson.msg !== null)
-                        ? fullJson.msg
-                        : (fullJson && typeof fullJson.data === 'object' && fullJson.data !== null ? fullJson.data : null);
-                      if (fullObj) rawPayload = fullObj;
-                    }
-                  } catch (_) {}
-                }
-              }
+          const found = await searchByDate(queryInput);
+          if (found) {
+            rawPayload = found;
+            // If found by easepayid, do a full single retrieve using the merchant txnid for all fields
+            if (found.txnid && found.txnid.toLowerCase() !== queryInput.toLowerCase()) {
+              try {
+                const full = await retrieveByTxnid(found.txnid);
+                if (full) rawPayload = full;
+              } catch (_) {}
             }
           }
         } catch (dateErr) {
@@ -381,11 +464,16 @@ export default async function handler(req, res) {
           || (responseData && responseData.error_desc ? responseData.error_desc : '')
           || (responseData && typeof responseData.error === 'string' ? responseData.error : '')
           || (lastError ? ('Network error: ' + lastError.message) : 'Transaction record not found in Easebuzz.');
+
+        const isEasepayId = looksLikeEasepayid;
+        const hint = isEasepayId
+          ? ` (Searched by Easebuzz ID: ${queryInput}. Ensure this transaction belongs to your merchant account and occurred today or in the last 2 days.)`
+          : '';
         return res.status(200).json({
           success: false,
           isPaid: false,
           linkStatus: 'NOT_FOUND',
-          message: `Easebuzz transaction record not found: ${errorDesc}. Payment has not been collected.`,
+          message: `Easebuzz transaction record not found: ${errorDesc}.${hint} Payment has not been collected.`,
           details: responseData
         });
       }

@@ -3,6 +3,34 @@
 
 import crypto from 'crypto';
 
+// Supabase REST client configuration for resolving student full name
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bhfiyrorfxvabquxmeiv.supabase.co';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || 'sb_publishable_woMsdVpSPa7mKfHOeGGK8Q_paTZlW3K';
+
+async function supabaseFetch(endpoint, options = {}) {
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${endpoint}`;
+  const headers = {
+    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 500, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -38,6 +66,8 @@ export default async function handler(req, res) {
       purpose,
       customerPhone,
       customerName,
+      firstname,
+      studentName,
       customerEmail,
       merchantEmail,
       udf1,
@@ -165,11 +195,37 @@ export default async function handler(req, res) {
       if (phone.length > 10) phone = phone.slice(-10);
       if (phone.length !== 10) phone = '9999999999';
 
-      // Sanitize customer name (alphanumeric & spaces, max 50 chars)
-      const sanitizedName = (customerName || 'Hostel Student')
-        .replace(/[^a-zA-Z0-9\s]/g, '')
+      // Sanitize customer full name (alphanumeric & spaces, max 50 chars)
+      // Easebuzz displays the mandatory firstname parameter as Customer Name in dashboard/reports
+      let rawName = (customerName || firstname || studentName || '').toString().trim();
+
+      // If missing, generic, or only a single word, attempt Supabase lookup via udf1 (app_id) or udf2 (ledger_id)
+      if ((!rawName || !rawName.includes(' ') || rawName.toLowerCase() === 'student') && (udf1 || udf2)) {
+        try {
+          const sLookupId = (udf1 || '').toString().trim();
+          const fLookupId = (udf2 || '').toString().trim();
+          if (sLookupId) {
+            const sRes = await supabaseFetch(`students?app_id=eq.${encodeURIComponent(sLookupId)}&select=full_name`);
+            if (sRes.ok && Array.isArray(sRes.data) && sRes.data.length > 0 && sRes.data[0].full_name) {
+              rawName = sRes.data[0].full_name;
+            }
+          }
+          if ((!rawName || !rawName.includes(' ')) && fLookupId) {
+            const lRes = await supabaseFetch(`student_fee_ledger?ledger_id=eq.${encodeURIComponent(fLookupId)}&select=student_name`);
+            if (lRes.ok && Array.isArray(lRes.data) && lRes.data.length > 0 && lRes.data[0].student_name) {
+              rawName = lRes.data[0].student_name;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!rawName) rawName = 'Hostel Student';
+
+      const sanitizedName = rawName
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim()
-        .substring(0, 50) || 'Student';
+        .substring(0, 50) || 'Hostel Student';
 
       // Sanitize customer email
       const email = (customerEmail && customerEmail.includes('@'))
@@ -271,6 +327,7 @@ export default async function handler(req, res) {
     if (action === 'check_status' || action === 'verify_payment') {
       // Accept txnid (merchant internal ID like TXN_...) or easepayid (Easebuzz-generated like E2611...)
       const queryInput = (txnid || linkId || easepayid || '').toString().trim();
+      const queryTxnId = queryInput;
       const expectedAmount = amount !== undefined && amount !== null && amount !== '' ? parseFloat(amount) : null;
 
       if (!queryInput) {

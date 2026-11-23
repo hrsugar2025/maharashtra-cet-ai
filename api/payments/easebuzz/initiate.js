@@ -3,6 +3,34 @@
 
 import crypto from 'crypto';
 
+// Supabase REST client configuration for resolving student full name
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bhfiyrorfxvabquxmeiv.supabase.co';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || 'sb_publishable_woMsdVpSPa7mKfHOeGGK8Q_paTZlW3K';
+
+async function supabaseFetch(endpoint, options = {}) {
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/${endpoint}`;
+  const headers = {
+    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 500, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,6 +70,7 @@ export default async function handler(req, res) {
       purpose,
       firstname,
       customerName,
+      studentName,
       phone,
       customerPhone,
       email,
@@ -90,13 +119,43 @@ export default async function handler(req, res) {
       .trim()
       .substring(0, 80) || 'Hostel Fee';
 
-    // firstname: Student first name (sanitized, no special characters)
-    const rawName = (firstname || customerName || 'Student').toString();
-    const firstName = rawName
+    // Customer / Student Full Name:
+    // Easebuzz payment gateway uses the mandatory 'firstname' parameter to display the Customer Name in the Merchant Gateway Dashboard reports.
+    // We sanitize alphanumeric characters and spaces without truncating or splitting the student's full name.
+    let rawName = (firstname || customerName || studentName || '').toString().trim();
+
+    // If name is missing, generic ('Student'), or only a single word, attempt to fetch the student's full registered name from Supabase
+    if ((!rawName || !rawName.includes(' ') || rawName.toLowerCase() === 'student') && (studentId || student_id || feeId || fee_id || udf1 || udf2)) {
+      try {
+        const sLookupId = (studentId || student_id || udf1 || '').toString().trim();
+        const fLookupId = (feeId || fee_id || udf2 || '').toString().trim();
+
+        if (sLookupId) {
+          const sRes = await supabaseFetch(`students?app_id=eq.${encodeURIComponent(sLookupId)}&select=full_name`);
+          if (sRes.ok && Array.isArray(sRes.data) && sRes.data.length > 0 && sRes.data[0].full_name) {
+            rawName = sRes.data[0].full_name;
+          }
+        }
+
+        if ((!rawName || !rawName.includes(' ')) && fLookupId) {
+          const lRes = await supabaseFetch(`student_fee_ledger?ledger_id=eq.${encodeURIComponent(fLookupId)}&select=student_name`);
+          if (lRes.ok && Array.isArray(lRes.data) && lRes.data.length > 0 && lRes.data[0].student_name) {
+            rawName = lRes.data[0].student_name;
+          }
+        }
+      } catch (err) {
+        console.warn('Fallback student full name lookup warning:', err.message);
+      }
+    }
+
+    if (!rawName) rawName = 'Hostel Student';
+
+    // Easebuzz allows alphanumeric characters and spaces in firstname (up to 50 chars)
+    const studentFullName = rawName
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
-      .split(/\s+/)[0]
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .substring(0, 50) || 'Student';
+      .substring(0, 50) || 'Hostel Student';
 
     // phone: 10-digit mobile number
     let cleanPhone = (phone || customerPhone || '').toString().replace(/\D/g, '');
@@ -125,7 +184,7 @@ export default async function handler(req, res) {
       generatedTxnId,
       formattedAmount,
       sanitizedProductInfo,
-      firstName,
+      studentFullName,
       sanitizedEmail,
       finalUdf1,
       finalUdf2,
@@ -143,7 +202,7 @@ export default async function handler(req, res) {
       txnid: generatedTxnId,
       amount: formattedAmount,
       productinfo: sanitizedProductInfo,
-      firstname: firstName,
+      firstname: studentFullName,
       phone: cleanPhone,
       email: sanitizedEmail,
       surl: callbackUrl,

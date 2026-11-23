@@ -3509,7 +3509,7 @@ if (typeof window.google.script.run === 'undefined') {
         </div>
       </div>
       <div class="form-group"><label class="form-label">Payment Mode *</label><select id="collect-mode" class="form-select" onchange="var n=document.getElementById('collect-eb-note'); if(n) n.style.display=(this.value && this.value.toLowerCase().indexOf('easebuzz')!==-1)?'block':'none';"><option value="">Select Mode</option><option>Cash</option><option>QR Code</option><option>Bank Transfer</option><option>Cheque</option><option>Payment Gateway (Easebuzz)</option><option>Online (Easebuzz)</option><option>Online (Cashfree)</option></select></div>
-      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="Easebuzz Txn ID / Reference (Required for Easebuzz)"/><div id="collect-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Easebuzz payment will be strictly verified via Easebuzz API and confirmed before generating receipt.</div></div>
+      <div class="form-group"><label class="form-label">Transaction ID</label><input type="text" id="collect-txn" class="form-input" placeholder="Easebuzz ID (e.g. E2611...) OR Merchant Txn ID (e.g. TXN_...)"/><div id="collect-eb-note" style="font-size: 0.75rem; color: #D97706; margin-top: 4px; display: none; font-weight: 600;">⚠️ Enter the Easebuzz ID (e.g. E2611231B39B35) from your Easebuzz Dashboard, or the Merchant Transaction ID. Payment will be verified via Easebuzz API before generating receipt.</div></div>
       <div class="form-group"><label class="form-label">Remarks</label><input type="text" id="collect-remarks" class="form-input" placeholder="Optional notes"/></div>
       <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); text-align: center;">
         <button type="button" class="btn btn-ghost btn-sm" onclick="openCashfreeFromCollectModal()" style="border-color: #10B981; color: #059669; font-weight: 600; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
@@ -14013,6 +14013,8 @@ function verifyEasebuzzAndConfirm(options) {
   }
 
   var cfg = getSavedEasebuzzConfig();
+  // Detect if the user entered an Easebuzz-generated easepayid (starts with E + digits) or a merchant txnid
+  var isEasepayId = /^E\d{4,}/i.test(txnId);
 
   fetch('/api/easebuzz', {
     method: 'POST',
@@ -14022,7 +14024,8 @@ function verifyEasebuzzAndConfirm(options) {
       env: cfg.env || 'production',
       merchantKey: cfg.merchantKey || cfg.appId || 'FRHPPBX6RF',
       salt: cfg.salt || cfg.secretKey || '45UDY802LV',
-      txnid: txnId,
+      txnid: isEasepayId ? '' : txnId,
+      easepayid: isEasepayId ? txnId : '',
       linkId: txnId,
       amount: amount
     })
@@ -14299,6 +14302,16 @@ function openEasebuzzLinkModal(ledgerId) {
     return;
   }
 
+  // Ensure full student name is available
+  var sFullName = (entry.studentName || entry.student_name || '').trim();
+  if ((!sFullName || !sFullName.includes(' ') || sFullName.toLowerCase() === 'student') && typeof allStudents !== 'undefined' && allStudents) {
+    var foundSt = allStudents.find(function(s){ return (entry.appId && s.app_id === entry.appId) || (entry.prn && (s.prn === entry.prn || s.aadhar_number === entry.prn)); });
+    if (foundSt && foundSt.full_name) {
+      sFullName = foundSt.full_name;
+      entry.studentName = foundSt.full_name;
+    }
+  }
+
   _currentEasebuzzLedger = entry;
   _currentEasebuzzLinkData = null;
 
@@ -14364,9 +14377,13 @@ function openEasebuzzFromCollectModal() {
     return;
   }
 
-  var studentName = _currentSfdName || 'Student';
+  var studentName = (_currentSfdName || 'Student').trim();
   var roomNumber  = _currentSfdRoom  || '-';
   var appId       = _currentSfdAppId || 'STD';
+  if ((!studentName || !studentName.includes(' ') || studentName.toLowerCase() === 'student') && typeof allStudents !== 'undefined' && allStudents) {
+    var sObj = allStudents.find(function(s){ return (appId && s.app_id === appId) || (appId && s.prn === appId); });
+    if (sObj && sObj.full_name) studentName = sObj.full_name;
+  }
   var contactNumber = '';
   var anyEntry = (_sfdEntries || []).find(function(e){ return e.contactNumber; });
   if (anyEntry) contactNumber = anyEntry.contactNumber || '';
@@ -14428,8 +14445,17 @@ function doGenerateEasebuzzLink() {
     showToast('Please enter a valid amount greater than 0.', 'error');
     return;
   }
+
+  var studentId = _currentEasebuzzLedger.appId || _currentEasebuzzLedger.prn || 'STD';
+  var studentFullName = (_currentEasebuzzLedger.studentName || _currentEasebuzzLedger.student_name || _currentSfdName || '').trim();
+  if ((!studentFullName || !studentFullName.includes(' ') || studentFullName.toLowerCase() === 'student') && typeof allStudents !== 'undefined' && allStudents) {
+    var fStudent = allStudents.find(function(s){ return (studentId && (s.app_id === studentId || s.prn === studentId || s.aadhar_number === studentId)); });
+    if (fStudent && fStudent.full_name) studentFullName = fStudent.full_name;
+  }
+  if (!studentFullName) studentFullName = 'Student';
+
   var phone = (document.getElementById('cf-phone').value || '').trim();
-  var purpose = (document.getElementById('cf-purpose').value || '').trim() || ('Fee payment for ' + _currentEasebuzzLedger.studentName);
+  var purpose = (document.getElementById('cf-purpose').value || '').trim() || ('Fee payment for ' + studentFullName);
 
   var cfg = getSavedEasebuzzConfig();
   var genBtn = document.getElementById('cf-btn-generate');
@@ -14438,7 +14464,6 @@ function doGenerateEasebuzzLink() {
     genBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Generating Link with Easebuzz...';
   }
 
-  var studentId = _currentEasebuzzLedger.appId || _currentEasebuzzLedger.prn || 'STD';
   var uniqueTxnId = ('TXN_' + Date.now() + '_' + studentId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
   fetch('/api/payments/easebuzz/initiate', {
@@ -14454,7 +14479,9 @@ function doGenerateEasebuzzLink() {
       academicYear: _currentEasebuzzLedger.academicYear || activeAcademicYear || '2026-27',
       amount: amt,
       productinfo: purpose,
-      firstname: _currentEasebuzzLedger.studentName || 'Student',
+      firstname: studentFullName,
+      customerName: studentFullName,
+      studentName: studentFullName,
       phone: phone,
       email: 'mvmghostel@gmail.com',
       udf1: studentId,
@@ -14475,7 +14502,7 @@ function doGenerateEasebuzzLink() {
         linkUrl: pUrl,
         amount: amt,
         ledgerId: _currentEasebuzzLedger.ledgerId,
-        studentName: _currentEasebuzzLedger.studentName,
+        studentName: studentFullName,
         phone: phone,
         purpose: purpose,
         multiplePayments: _currentEasebuzzLedger.multiplePayments || null
